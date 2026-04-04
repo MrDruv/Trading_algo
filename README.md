@@ -1,18 +1,19 @@
-# BTCUSD Institutional Momentum Scalper
+# Quantum Scalper | Institutional BTCUSD Command Center (V4.2.1)
 
-An autonomous high-frequency scalping bot for Bitcoin (BTCUSD) using the MetaTrader 5 Python API. This bot implements an elite momentum strategy with institutional Fair Value Gap (FVG) detection and hyper-aggressive trailing stop management.
+An elite, autonomous high-frequency scalping system for Bitcoin (BTCUSD) powered by the MetaTrader 5 Python API and a professional Flask-based web dashboard.
 
-## 🚀 Features
+## 🚀 Key Features
 
-- **Institutional Entry Logic**: Combines EMA 9/21 crossovers, Fair Value Gaps (FVG), and 15-minute price breakouts.
-- **Unlimited Profit Potential**: No fixed Take Profit (TP) targets; uses a trailing stop to ride trends indefinitely.
-- **Hyper-Aggressive Trailing**:
-  - **Trigger**: Starts trailing as soon as price moves $10 in profit.
-  - **Distance**: Maintains a tight $2.00 distance from the current price.
-  - **Precision**: Checks and updates Stop Loss every 1 second.
-- **Dynamic Risk Management**: Automatically handles lot sizes and provides real-time broker execution diagnostics.
+- **V4.2.1 "Superb" Logic**: Combines ultra-fast EMA 5/13 crossovers with institutional Fair Value Gap (FVG) detection and 15-minute structural breakouts.
+- **Professional Command Center**: A high-end web dashboard ([http://localhost:5000](http://localhost:5000)) for real-time control and monitoring.
+- **Dynamic Risk Management**: 
+  - **Tight SL**: $15.00 initial protection.
+  - **Hyper-Aggressive Trailing**: Starts at $10.00 profit with a precise $5.00 trailing distance.
+  - **Unlimited Upside**: No fixed targets; rides trends indefinitely until the trail triggers.
+- **Live Account Sync**: Real-time tracking of Balance, Equity, and Broker details (Optimized for Vantage/Exness/FundedNext).
+- **Session Analysis**: Automated Win Rate calculation and consolidated trade history (one row per position).
 
-## 🛠 Setup
+## 🛠 Setup & Installation
 
 ### Prerequisites
 - Windows OS
@@ -20,46 +21,41 @@ An autonomous high-frequency scalping bot for Bitcoin (BTCUSD) using the MetaTra
 - Python 3.10+
 - [uv](https://github.com/astral.sh/uv) (Recommended package manager)
 
-### Installation
-1. Clone this repository:
+### Quick Start
+1. **Clone and Install**:
    ```bash
-   git clone <your-repo-url>
-   cd gemini-safe
-   ```
-2. Install dependencies:
-   ```bash
+   git clone https://github.com/MrDruv/Trading_algo.git
+   cd Trading_algo
    uv sync
    ```
-
-## 📈 Current Strategy: "Unlimited Superb"
-
-The bot is currently configured with the **Unlimited Superb** parameters:
-
-| Parameter | Value | Description |
-|-----------|-------|-------------|
-| **Symbol** | BTCUSD | Target Asset |
-| **Timeframe** | M1 (1-min) | Execution timeframe |
-| **Lot Size** | 0.50 | Standard trade volume |
-| **Initial SL**| $40.00 | Initial risk buffer |
-| **Trailing Start**| $10.00 | Profit required to start trailing |
-| **Trailing Dist** | $2.00 | Distance of SL from live price |
-
-## 🖥 Usage
-
-1. Open your MT5 Terminal and log in to your account (e.g., Exness or FundedNext).
-2. Enable **Algo Trading** (Make sure the button is GREEN).
-3. Run the bot:
+2. **Launch Dashboard**:
+   ```bash
+   uv run dashboard.py
+   ```
+3. **Launch Engine**:
    ```bash
    uv run live_execution.py
    ```
+4. **Connect**: Open [http://localhost:5000](http://localhost:5000), enter your `terminal64.exe` path, click **Initialize Link**, and then **Activate System**.
+
+## 📉 Trading Strategy: Institutional Fast-Momentum
+
+| Component | Logic |
+|-----------|-------|
+| **Trend Filter** | Fast EMA (5) vs Slow EMA (13) |
+| **Triggers** | 15-min High/Low Breakout OR Fair Value Gap (FVG) |
+| **Initial SL** | $15.00 (Fixed) |
+| **Trailing Stop**| Starts @ +$10.00 \| Distance: $5.00 |
+| **Take Profit** | None (Ride the momentum) |
+| **Lot Size** | Configurable via Dashboard (Default: 0.50) |
 
 ## 📂 Project Structure
 
-- `live_execution.py`: The main execution loop and position manager.
-- `train.py`: Core strategy logic (`active_momentum_scalp`).
-- `prepare.py`: MT5 connection and data utility functions.
-- `results.tsv`: Log of experimental performance.
+- `live_execution.py`: Multi-account sync engine and position manager.
+- `dashboard.py`: Professional Flask-based web interface.
+- `train.py`: Core strategy logic (`superb_momentum_logic`).
+- `bot_state.json`: Real-time state persistence between engine and UI.
 
 ## ⚠️ Disclaimer
 
-Trading cryptocurrencies involves significant risk. This bot is provided for educational and experimental purposes. Always test on a demo/test account before using real capital.
+Trading involves significant risk. This system is designed for high-frequency scalping and requires low-latency execution and tight spreads. Always test on a demo account before live deployment.

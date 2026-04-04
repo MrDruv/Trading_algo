@@ -7,252 +7,180 @@ app = Flask(__name__)
 CORS(app)
 
 STATE_FILE = "bot_state.json"
-DEFAULT_PATH = r"C:\Users\HP Power\AppData\Roaming\FundedNext MT5 Terminal\terminal64.exe"
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantum Scalper | Command Center</title>
+    <title>Quantum Scalper | Hub</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --bg: #0a0b10;
-            --card-bg: #14161f;
-            --accent: #0070f3;
-            --success: #00ff88;
-            --danger: #ff4d4d;
-            --text: #ffffff;
-            --text-dim: #888ea1;
-            --border: #232635;
-        }
-        
-        * { box-sizing: border-box; transition: all 0.2s ease; }
-        body { 
-            background-color: var(--bg); 
-            color: var(--text); 
-            font-family: 'Inter', sans-serif; 
-            margin: 0; 
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
+        :root { --bg: #0a0b10; --card-bg: #14161f; --accent: #0070f3; --success: #00ff88; --danger: #ff4d4d; --text: #ffffff; --text-dim: #888ea1; --border: #232635; }
+        [data-theme="light"] { --bg: #f0f2f5; --card-bg: #ffffff; --accent: #0070f3; --success: #28a745; --danger: #d73a49; --text: #1a1a1a; --text-dim: #6a737d; --border: #e1e4e8; }
+        * { box-sizing: border-box; transition: background 0.3s, color 0.3s; }
+        body { background-color: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
         .container { max-width: 900px; width: 100%; }
-        
-        .nav { 
-            display: flex; 
-            justify-content: space-between; 
-            align-items: center; 
-            width: 100%; 
-            margin-bottom: 40px;
-            padding: 0 10px;
-        }
-        
+        .nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
         .logo { font-size: 22px; font-weight: 800; letter-spacing: -1px; }
         .logo span { color: var(--accent); }
-
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: 1.5fr 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        .card {
-            background: var(--card-bg);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 24px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        }
-
-        h2 { font-size: 14px; text-transform: uppercase; color: var(--text-dim); margin-top: 0; margin-bottom: 20px; letter-spacing: 1px; }
-
-        input {
-            width: 100%;
-            background: #0a0b10;
-            border: 1px solid var(--border);
-            padding: 12px 16px;
-            border-radius: 8px;
-            color: white;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 13px;
-            margin-bottom: 15px;
-        }
-
-        input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px rgba(0,112,243,0.2); }
-
-        .btn-group { display: flex; gap: 10px; }
-        .btn {
-            flex: 1;
-            padding: 12px;
-            border-radius: 8px;
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            font-size: 13px;
-        }
-
+        .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        h2 { font-size: 12px; text-transform: uppercase; color: var(--text-dim); margin-top: 0; margin-bottom: 15px; letter-spacing: 1px; }
+        label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 5px; }
+        input { width: 100%; background: var(--bg); border: 1px solid var(--border); padding: 10px; border-radius: 8px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px; margin-bottom: 10px; }
+        .btn { padding: 12px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; font-size: 13px; width: 100%; }
         .btn-primary { background: var(--accent); color: white; }
-        .btn-secondary { background: rgba(255,255,255,0.05); color: white; border: 1px solid var(--border); }
-        .btn-danger { background: var(--danger); color: white; }
+        .btn-secondary { background: rgba(128,128,128,0.1); color: var(--text); border: 1px solid var(--border); margin-top: 5px; }
         .btn-success { background: var(--success); color: #000; }
-        .btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
-        .btn:active { transform: translateY(0); }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        .status-pill {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            font-weight: 700;
-            padding: 4px 12px;
-            border-radius: 100px;
-            background: rgba(255,255,255,0.05);
-        }
-        
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-disabled { background: #333 !important; color: #666 !important; cursor: not-allowed !important; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
+        .info-label { color: var(--text-dim); }
+        .info-value { font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+        .pnl-value { font-size: 32px; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 15px; }
+        th { text-align: left; padding: 12px; background: rgba(128,128,128,0.05); color: var(--text-dim); }
+        td { padding: 12px; border-top: 1px solid var(--border); }
+        .status-pill { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; padding: 6px 16px; border-radius: 100px; background: var(--card-bg); border: 1px solid var(--border); }
         .dot { width: 8px; height: 8px; border-radius: 50%; }
-        .dot-active { background: var(--success); box-shadow: 0 0 10px var(--success); animation: pulse 2s infinite; }
+        .dot-active { background: var(--success); box-shadow: 0 0 10px var(--success); }
         .dot-inactive { background: var(--danger); }
-
-        .pnl-value { font-size: 48px; font-weight: 800; font-family: 'JetBrains Mono', monospace; margin: 10px 0; }
-        
-        .table-container { margin-top: 20px; overflow: hidden; border-radius: 12px; border: 1px solid var(--border); }
-        table { width: 100%; border-collapse: collapse; background: var(--card-bg); font-size: 13px; }
-        th { text-align: left; padding: 16px; background: rgba(255,255,255,0.02); color: var(--text-dim); font-weight: 400; }
-        td { padding: 16px; border-top: 1px solid var(--border); }
-        
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.4; }
-            100% { opacity: 1; }
-        }
-
-        @media (max-width: 768px) {
-            .dashboard-grid { grid-template-columns: 1fr; }
-        }
     </style>
 </head>
-<body>
+<body data-theme="dark">
     <div class="container">
         <div class="nav">
             <div class="logo">QUANTUM<span>SCALPER</span></div>
-            <div class="status-pill">
-                <div id="conn-dot" class="dot dot-inactive"></div>
-                MT5: <span id="conn-text">DISCONNECTED</span>
+            <div style="display:flex; gap:10px">
+                <button style="background:var(--card-bg); color:var(--text); border:1px solid var(--border); padding:8px 15px; border-radius:8px; cursor:pointer" onclick="toggleTheme()" id="theme-btn">🌙 Dark</button>
+                <div class="status-pill">
+                    <div id="conn-dot" class="dot dot-inactive"></div>
+                    MT5: <span id="conn-text">DISCONNECTED</span>
+                </div>
             </div>
         </div>
 
         <div class="dashboard-grid">
             <div class="card">
-                <h2>Terminal Configuration</h2>
-                <input type="text" id="mt5-path" placeholder="Path to MetaTrader 5 (terminal64.exe)">
-                <div class="btn-group">
-                    <button id="connect-btn" class="btn btn-primary">Initialize Connection</button>
-                    <button id="disconnect-btn" class="btn btn-secondary">Terminate Link</button>
-                </div>
+                <h2>Account Information</h2>
+                <div class="info-row"><span class="info-label">Login ID</span><span class="info-value" id="acc-id">---</span></div>
+                <div class="info-row"><span class="info-label">Broker</span><span class="info-value" id="acc-broker">---</span></div>
+                <div class="info-row"><span class="info-label">Balance</span><span class="info-value" id="acc-balance">$0.00</span></div>
+                <div class="info-row"><span class="info-label">Leverage</span><span class="info-value" id="acc-leverage">1:---</span></div>
             </div>
 
-            <div class="card" style="display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
-                <h2>Algorithm Engine</h2>
-                <div id="algo-status" style="font-size: 18px; font-weight: 700; margin-bottom: 15px;">STANDBY</div>
-                <button id="toggle-btn" class="btn btn-success" style="width: 100%; padding: 16px;">ACTIVATE SYSTEM</button>
+            <div class="card">
+                <h2>Terminal Link</h2>
+                <input type="text" id="mt5-path" placeholder="terminal64.exe path">
+                <button id="connect-btn" class="btn btn-primary">Connect MT5</button>
+                <button id="disconnect-btn" class="btn btn-secondary">Disconnect</button>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card" style="text-align:center">
+                <h2>Algo Engine</h2>
+                <label style="text-align:left">Volume (Lots)</label>
+                <input type="number" id="lot-size" step="0.01">
+                <div id="algo-status" style="font-weight:700; margin-bottom:10px">STANDBY</div>
+                <button id="toggle-btn" class="btn btn-success">ACTIVATE ALGO</button>
+            </div>
+
+            <div class="card" style="text-align:center">
+                <h2>Session Analysis</h2>
+                <div id="pnl-text" class="pnl-value">$0.00</div>
+                <div class="info-row" style="justify-content: center; gap: 20px; margin-top: 10px;">
+                    <div><span class="info-label">Win Rate:</span> <span id="win-rate" style="color:var(--success); font-weight:700">0%</span></div>
+                    <div><span class="info-label">Trades:</span> <span id="total-trades" style="font-weight:700">0</span></div>
+                </div>
             </div>
         </div>
 
         <div class="card">
-            <div style="display:flex; justify-content: space-between; align-items: flex-start;">
-                <div>
-                    <h2>Real-time Performance</h2>
-                    <div id="pnl-text" class="pnl-value">$0.00</div>
-                </div>
-                <div style="text-align: right">
-                    <h2 style="margin-bottom: 5px;">Active Asset</h2>
-                    <div style="font-weight: 700; color: var(--accent)">BTCUSD (M1)</div>
-                </div>
-            </div>
-
-            <div class="table-container">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>TIMESTAMP</th>
-                            <th>OPERATION</th>
-                            <th>PRICE</th>
-                            <th>PNL (USD)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="history-body"></tbody>
-                </table>
-            </div>
+            <h2>Order History</h2>
+            <table>
+                <thead><tr><th>TIME</th><th>TYPE</th><th>PRICE</th><th>PNL</th></tr></thead>
+                <tbody id="history-body"></tbody>
+            </table>
         </div>
     </div>
 
     <script>
+        function toggleTheme() {
+            const b = document.body;
+            const t = b.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            b.setAttribute('data-theme', t);
+            document.getElementById('theme-btn').innerText = t === 'dark' ? '🌙 Dark' : '☀️ Light';
+            localStorage.setItem('theme', t);
+        }
+        if (localStorage.getItem('theme')) {
+            const t = localStorage.getItem('theme');
+            document.body.setAttribute('data-theme', t);
+            document.getElementById('theme-btn').innerText = t === 'dark' ? '🌙 Dark' : '☀️ Light';
+        }
+
         async function refresh() {
             const r = await fetch('/api/state');
             const s = await r.json();
             
-            // Connection UI
-            const pathInput = document.getElementById('mt5-path');
-            if (!pathInput.value && !window.pathSet) {
-                pathInput.value = s.terminal_path;
-                window.pathSet = true;
+            if (!window.uiInit) {
+                document.getElementById('mt5-path').value = s.terminal_path || "";
+                document.getElementById('lot-size').value = s.lots || 0.50;
+                window.uiInit = true;
             }
-            
-            const dot = document.getElementById('conn-dot');
-            const ct = document.getElementById('conn-text');
-            dot.className = "dot " + (s.connected ? "dot-active" : "dot-inactive");
-            ct.innerText = s.connected ? "CONNECTED" : "DISCONNECTED";
-            ct.style.color = s.connected ? "var(--success)" : "var(--danger)";
 
-            // Algo UI
-            const as = document.getElementById('algo-status');
+            document.getElementById('acc-id').innerText = s.account?.id || "---";
+            document.getElementById('acc-broker').innerText = s.account?.broker || "---";
+            document.getElementById('acc-balance').innerText = "$" + (s.account?.balance || 0).toFixed(2);
+            document.getElementById('acc-leverage').innerText = "1:" + (s.account?.leverage || "---");
+
+            document.getElementById('conn-dot').className = "dot " + (s.connected ? "dot-active" : "dot-inactive");
+            document.getElementById('conn-text').innerText = s.connected ? "CONNECTED" : "DISCONNECTED";
+            document.getElementById('conn-text').style.color = s.connected ? "var(--success)" : "var(--danger)";
+
             const tb = document.getElementById('toggle-btn');
-            as.innerText = s.active ? "CORE SYSTEM: RUNNING" : "CORE SYSTEM: STANDBY";
-            as.style.color = s.active ? "var(--success)" : "var(--text-dim)";
-            tb.innerText = s.active ? "EMERGENCY STOP" : "ACTIVATE SYSTEM";
-            tb.className = "btn " + (s.active ? "btn-danger" : "btn-success");
-            tb.disabled = !s.connected;
+            const as = document.getElementById('algo-status');
+            
+            if (!s.connected) {
+                as.innerText = "WAITING FOR CONNECTION";
+                as.style.color = "var(--text-dim)";
+                tb.innerText = "CONNECT MT5 FIRST";
+                tb.className = "btn btn-disabled";
+                tb.disabled = true;
+            } else {
+                as.innerText = s.active ? "ALGO: ACTIVE" : "ALGO: STANDBY";
+                as.style.color = s.active ? "var(--success)" : "var(--text-dim)";
+                tb.innerText = s.active ? "STOP ALGO" : "START ALGO";
+                tb.className = "btn " + (s.active ? "btn-danger" : "btn-success");
+                tb.disabled = false;
+            }
 
-            // PNL UI
-            const pt = document.getElementById('pnl-text');
-            pt.innerText = (s.total_pnl >= 0 ? "+" : "") + "$" + s.total_pnl.toFixed(2);
-            pt.style.color = s.total_pnl >= 0 ? "var(--success)" : "var(--danger)";
+            document.getElementById('pnl-text').innerText = (s.total_pnl >= 0 ? "+" : "") + "$" + s.total_pnl.toFixed(2);
+            document.getElementById('pnl-text').style.color = s.total_pnl >= 0 ? "var(--success)" : "var(--danger)";
 
-            // History UI
-            const body = document.getElementById('history-body');
-            body.innerHTML = "";
-            s.history.slice().reverse().forEach(t => {
-                const pnlColor = t.profit >= 0 ? "var(--success)" : "var(--danger)";
-                body.innerHTML += `<tr>
-                    <td style="color: var(--text-dim); font-family: 'JetBrains Mono'">${t.time}</td>
+            const closed = s.history.filter(t => t.profit !== 0);
+            document.getElementById('win-rate').innerText = closed.length > 0 ? ((closed.filter(t => t.profit > 0).length / closed.length) * 100).toFixed(1) + "%" : "0.0%";
+            document.getElementById('total-trades').innerText = closed.length;
+
+            document.getElementById('history-body').innerHTML = s.history.slice().reverse().map(t => `
+                <tr>
+                    <td style="color:var(--text-dim)">${t.time}</td>
                     <td style="font-weight:700; color:${t.type=='BUY'?'var(--accent)':'#f44336'}">${t.type}</td>
-                    <td style="font-family: 'JetBrains Mono'">${t.price.toFixed(2)}</td>
-                    <td style="color:${pnlColor}; font-family: 'JetBrains Mono'; font-weight:700">${t.profit >= 0 ? '+' : ''}${t.profit.toFixed(2)}</td>
-                </tr>`;
-            });
+                    <td>${t.price.toFixed(2)}</td>
+                    <td style="color:${t.profit>=0?'var(--success)':'var(--danger)'}; font-weight:700">${t.profit>=0?'+':''}${t.profit.toFixed(2)}</td>
+                </tr>
+            `).join('');
         }
 
         document.getElementById('connect-btn').onclick = async () => {
             const p = document.getElementById('mt5-path').value;
-            await fetch('/api/settings', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ terminal_path: p })
-            });
+            await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ terminal_path: p, connect_intent: true }) });
         };
-
-        document.getElementById('disconnect-btn').onclick = async () => {
-            await fetch('/api/disconnect', { method: 'POST' });
-        };
-
+        document.getElementById('disconnect-btn').onclick = async () => { await fetch('/api/disconnect', { method: 'POST' }); };
         document.getElementById('toggle-btn').onclick = async () => {
+            const lots = document.getElementById('lot-size').value;
+            await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ lots: parseFloat(lots) }) });
             await fetch('/api/toggle', { method: 'POST' });
         };
 
@@ -265,12 +193,12 @@ HTML_TEMPLATE = """
 
 def get_state():
     if not os.path.exists(STATE_FILE):
-        initial = {"active": False, "connected": False, "terminal_path": DEFAULT_PATH, "history": [], "total_pnl": 0.0}
+        initial = {"active": False, "connected": False, "connect_intent": False, "terminal_path": "", "lots": 0.50, "history": [], "total_pnl": 0.0, "account": {}}
         with open(STATE_FILE, 'w') as f: json.dump(initial, f)
         return initial
     try:
         with open(STATE_FILE, 'r') as f: return json.load(f)
-    except: return {"active": False, "connected": False, "terminal_path": DEFAULT_PATH, "history": [], "total_pnl": 0.0}
+    except: return {"active": False, "connected": False, "connect_intent": False, "terminal_path": "", "lots": 0.50, "history": [], "total_pnl": 0.0, "account": {}}
 
 @app.route('/')
 def index(): return render_template_string(HTML_TEMPLATE)
@@ -282,8 +210,10 @@ def api_state(): return jsonify(get_state())
 def api_settings():
     data = request.json
     state = get_state()
-    state["terminal_path"] = data.get("terminal_path", state["terminal_path"])
-    state["connected"] = True 
+    if "terminal_path" in data:
+        state["terminal_path"] = data["terminal_path"]
+        state["connect_intent"] = True 
+    if "lots" in data: state["lots"] = data["lots"]
     with open(STATE_FILE, 'w') as f: json.dump(state, f)
     return jsonify(state)
 
@@ -291,7 +221,9 @@ def api_settings():
 def api_disconnect():
     state = get_state()
     state["connected"] = False
+    state["connect_intent"] = False
     state["active"] = False 
+    state["account"] = {}
     with open(STATE_FILE, 'w') as f: json.dump(state, f)
     return jsonify(state)
 
