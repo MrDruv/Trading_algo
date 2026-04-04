@@ -48,6 +48,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "kernels" },
     { name = "matplotlib" },
+    { name = "metatrader5" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -63,6 +64,7 @@ dependencies = [
 requires-dist = [
     { name = "kernels", specifier = ">=0.11.7" },
     { name = "matplotlib", specifier = ">=3.10.8" },
+    { name = "metatrader5", specifier = ">=5.0.5640" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "pandas", specifier = ">=2.3.3" },
     { name = "pyarrow", specifier = ">=21.0.0" },
@@ -866,6 +868,22 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec958cb99bd3efefba235e65cdeb9c84d24a8293ba1d90/mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba", size = 8729, upload-time = "2022-08-14T12:40:10.846Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8", size = 9979, upload-time = "2022-08-14T12:40:09.779Z" },
+]
+
+[[package]]
+name = "metatrader5"
+version = "5.0.5640"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/56/a02605ed4189d8e122df2e84c98144f7a9ba35d009b8333dfc991532c540/metatrader5-5.0.5640-cp310-cp310-win_amd64.whl", hash = "sha256:ad2e2949e529f8bc6fc471a7890ba223af30452efca85cb06b08bc697b8a7ab6", size = 48091, upload-time = "2026-02-20T23:31:11.176Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/a0/3b764c6743ef601ff12f7d8d62ca5768eb25e90d3758ac7e1d08e667af85/metatrader5-5.0.5640-cp311-cp311-win_amd64.whl", hash = "sha256:4057255f2d63138a3ea1a5d492715038a71d3177cad793fca97a5c58771b4eb1", size = 48091, upload-time = "2026-02-20T23:31:12.289Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/ee/b158bece0322ccf426b2879742bfce00104e53291a3c057a333c90633a88/metatrader5-5.0.5640-cp312-cp312-win_amd64.whl", hash = "sha256:24fab41178067e67c4d9ceb70bc0923d1814090a6e1f9bc5d7d13fa83737ddee", size = 48067, upload-time = "2026-02-20T23:31:13.815Z" },
+    { url = "https://files.pythonhosted.org/packages/e9/39/a735f26d826c6a5dc8c8d665d2bca83f22dc20f92543647712c210800be1/metatrader5-5.0.5640-cp313-cp313-win_amd64.whl", hash = "sha256:08431a9d02a26d517dcde19fccd571a57ec4454acb798ee246d95eae8946e60e", size = 48073, upload-time = "2026-02-20T23:31:15.35Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/35/720c25914da04cd0da44151a06bc8c8c06debfb38c5a1bf5188c7e057978/metatrader5-5.0.5640-cp314-cp314-win_amd64.whl", hash = "sha256:1f5ef6b88a62632aeaa201223bc65519ef7db17643fb35704d62b5a7a960680e", size = 49592, upload-time = "2026-02-20T23:31:16.224Z" },
 ]
 
 [[package]]
