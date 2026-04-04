@@ -28,7 +28,7 @@ HTML_TEMPLATE = """
         .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
         h2 { font-size: 12px; text-transform: uppercase; color: var(--text-dim); margin-top: 0; margin-bottom: 15px; letter-spacing: 1px; }
         label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 5px; }
-        input { width: 100%; background: var(--bg); border: 1px solid var(--border); padding: 10px; border-radius: 8px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px; margin-bottom: 10px; }
+        input, select { width: 100%; background: var(--bg); border: 1px solid var(--border); padding: 10px; border-radius: 8px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px; margin-bottom: 10px; }
         .btn { padding: 12px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; font-size: 13px; width: 100%; }
         .btn-primary { background: var(--accent); color: white; }
         .btn-secondary { background: rgba(128,128,128,0.1); color: var(--text); border: 1px solid var(--border); margin-top: 5px; }
@@ -64,12 +64,10 @@ HTML_TEMPLATE = """
         <div class="dashboard-grid">
             <div class="card">
                 <h2>Account Information</h2>
-                <div class="info-row"><span class="info-label">Login ID</span><span class="info-value" id="acc-id">---</span></div>
                 <div class="info-row"><span class="info-label">Broker</span><span class="info-value" id="acc-broker">---</span></div>
-                <div class="info-row"><span class="info-label">Balance</span><span class="info-value" id="acc-balance">$0.00</span></div>
-                <div class="info-row"><span class="info-label">Leverage</span><span class="info-value" id="acc-leverage">1:---</span></div>
+                <div class="info-row"><span class="info-label">Login ID</span><span class="info-value" id="acc-id">---</span></div>
+                <div class="info-row"><span class="info-label">Equity</span><span class="info-value" id="acc-balance">$0.00</span></div>
             </div>
-
             <div class="card">
                 <h2>Terminal Link</h2>
                 <input type="text" id="mt5-path" placeholder="terminal64.exe path">
@@ -81,27 +79,35 @@ HTML_TEMPLATE = """
         <div class="dashboard-grid">
             <div class="card" style="text-align:center">
                 <h2>Algo Engine</h2>
-                <label style="text-align:left">Volume (Lots)</label>
-                <input type="number" id="lot-size" step="0.01">
-                <div id="algo-status" style="font-weight:700; margin-bottom:10px">STANDBY</div>
-                <button id="toggle-btn" class="btn btn-success">ACTIVATE ALGO</button>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; text-align:left">
+                    <div><label>Asset</label><select id="target-symbol"><option value="BTCUSD">BTCUSD</option><option value="XAUUSD">XAUUSD</option></select></div>
+                    <div><label>Lots</label><input type="number" id="lot-size" step="0.01"></div>
+                </div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; text-align:left">
+                    <div><label>SL (Points)</label><input type="number" id="sl-points" step="1"></div>
+                    <div><label>Trail (Points)</label><input type="number" id="trail-points" step="1"></div>
+                </div>
+                <div id="algo-status" style="font-weight:700; margin:10px 0">STANDBY</div>
+                <button id="toggle-btn" class="btn btn-success">START ALGO</button>
             </div>
 
+            <!-- ASSET ONLY ANALYSIS -->
             <div class="card" style="text-align:center">
-                <h2>Session Analysis</h2>
-                <div id="pnl-text" class="pnl-value">$0.00</div>
+                <h2><span class="active-asset-name">...</span> Performance</h2>
+                <div id="asset-pnl-text" class="pnl-value">$0.00</div>
                 <div class="info-row" style="justify-content: center; gap: 20px; margin-top: 10px;">
-                    <div><span class="info-label">Win Rate:</span> <span id="win-rate" style="color:var(--success); font-weight:700">0%</span></div>
-                    <div><span class="info-label">Trades:</span> <span id="total-trades" style="font-weight:700">0</span></div>
+                    <div><span class="info-label">Win Rate:</span> <span id="asset-win-rate" style="color:var(--success); font-weight:700">0%</span></div>
+                    <div><span class="info-label">Trades:</span> <span id="asset-total-trades" style="font-weight:700">0</span></div>
                 </div>
             </div>
         </div>
 
+        <!-- ASSET ONLY HISTORY -->
         <div class="card">
-            <h2>Order History</h2>
+            <h2><span class="active-asset-name">...</span> Order History</h2>
             <table>
                 <thead><tr><th>TIME</th><th>TYPE</th><th>PRICE</th><th>PNL</th></tr></thead>
-                <tbody id="history-body"></tbody>
+                <tbody id="asset-history-body"></tbody>
             </table>
         </div>
     </div>
@@ -127,13 +133,15 @@ HTML_TEMPLATE = """
             if (!window.uiInit) {
                 document.getElementById('mt5-path').value = s.terminal_path || "";
                 document.getElementById('lot-size').value = s.lots || 0.50;
+                document.getElementById('sl-points').value = s.sl_points || 15;
+                document.getElementById('trail-points').value = s.trail_points || 5;
+                document.getElementById('target-symbol').value = s.symbol || "BTCUSD";
                 window.uiInit = true;
             }
 
             document.getElementById('acc-id').innerText = s.account?.id || "---";
             document.getElementById('acc-broker').innerText = s.account?.broker || "---";
             document.getElementById('acc-balance').innerText = "$" + (s.account?.balance || 0).toFixed(2);
-            document.getElementById('acc-leverage').innerText = "1:" + (s.account?.leverage || "---");
 
             document.getElementById('conn-dot').className = "dot " + (s.connected ? "dot-active" : "dot-inactive");
             document.getElementById('conn-text').innerText = s.connected ? "CONNECTED" : "DISCONNECTED";
@@ -151,19 +159,26 @@ HTML_TEMPLATE = """
             } else {
                 as.innerText = s.active ? "ALGO: ACTIVE" : "ALGO: STANDBY";
                 as.style.color = s.active ? "var(--success)" : "var(--text-dim)";
-                tb.innerText = s.active ? "STOP ALGO" : "START ALGO";
+                tb.innerText = s.active ? "STOP BOT" : "START BOT";
                 tb.className = "btn " + (s.active ? "btn-danger" : "btn-success");
                 tb.disabled = false;
             }
 
-            document.getElementById('pnl-text').innerText = (s.total_pnl >= 0 ? "+" : "") + "$" + s.total_pnl.toFixed(2);
-            document.getElementById('pnl-text').style.color = s.total_pnl >= 0 ? "var(--success)" : "var(--danger)";
+            // ASSET SPECIFIC ANALYSIS
+            const currentSymbol = document.getElementById('target-symbol').value;
+            document.querySelectorAll('.active-asset-name').forEach(el => el.innerText = currentSymbol);
+            
+            const assetTrades = s.history.filter(t => t.symbol === currentSymbol);
+            const assetClosed = assetTrades.filter(t => t.profit !== 0);
+            const assetPnl = assetTrades.reduce((acc, t) => acc + t.profit, 0);
+            const assetWinRate = assetClosed.length > 0 ? ((assetClosed.filter(t => t.profit > 0).length / assetClosed.length) * 100).toFixed(1) + "%" : "0.0%";
 
-            const closed = s.history.filter(t => t.profit !== 0);
-            document.getElementById('win-rate').innerText = closed.length > 0 ? ((closed.filter(t => t.profit > 0).length / closed.length) * 100).toFixed(1) + "%" : "0.0%";
-            document.getElementById('total-trades').innerText = closed.length;
+            document.getElementById('asset-pnl-text').innerText = (assetPnl >= 0 ? "+" : "") + "$" + assetPnl.toFixed(2);
+            document.getElementById('asset-pnl-text').style.color = assetPnl >= 0 ? "var(--success)" : "var(--danger)";
+            document.getElementById('asset-win-rate').innerText = assetWinRate;
+            document.getElementById('asset-total-trades').innerText = assetClosed.length;
 
-            document.getElementById('history-body').innerHTML = s.history.slice().reverse().map(t => `
+            document.getElementById('asset-history-body').innerHTML = assetTrades.slice().reverse().map(t => `
                 <tr>
                     <td style="color:var(--text-dim)">${t.time}</td>
                     <td style="font-weight:700; color:${t.type=='BUY'?'var(--accent)':'#f44336'}">${t.type}</td>
@@ -171,6 +186,12 @@ HTML_TEMPLATE = """
                     <td style="color:${t.profit>=0?'var(--success)':'var(--danger)'}; font-weight:700">${t.profit>=0?'+':''}${t.profit.toFixed(2)}</td>
                 </tr>
             `).join('');
+
+            // LOCK INPUTS
+            document.getElementById('target-symbol').disabled = s.active;
+            document.getElementById('lot-size').disabled = s.active;
+            document.getElementById('sl-points').disabled = s.active;
+            document.getElementById('trail-points').disabled = s.active;
         }
 
         document.getElementById('connect-btn').onclick = async () => {
@@ -179,8 +200,13 @@ HTML_TEMPLATE = """
         };
         document.getElementById('disconnect-btn').onclick = async () => { await fetch('/api/disconnect', { method: 'POST' }); };
         document.getElementById('toggle-btn').onclick = async () => {
-            const lots = document.getElementById('lot-size').value;
-            await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ lots: parseFloat(lots) }) });
+            const settings = {
+                lots: parseFloat(document.getElementById('lot-size').value),
+                sl_points: parseFloat(document.getElementById('sl-points').value),
+                trail_points: parseFloat(document.getElementById('trail-points').value),
+                symbol: document.getElementById('target-symbol').value
+            };
+            await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(settings) });
             await fetch('/api/toggle', { method: 'POST' });
         };
 
@@ -193,12 +219,12 @@ HTML_TEMPLATE = """
 
 def get_state():
     if not os.path.exists(STATE_FILE):
-        initial = {"active": False, "connected": False, "connect_intent": False, "terminal_path": "", "lots": 0.50, "history": [], "total_pnl": 0.0, "account": {}}
+        initial = {"active": False, "connected": False, "connect_intent": False, "symbol": "BTCUSD", "lots": 0.50, "sl_points": 15, "trail_points": 5, "history": [], "total_pnl": 0.0, "account": {}}
         with open(STATE_FILE, 'w') as f: json.dump(initial, f)
         return initial
     try:
         with open(STATE_FILE, 'r') as f: return json.load(f)
-    except: return {"active": False, "connected": False, "connect_intent": False, "terminal_path": "", "lots": 0.50, "history": [], "total_pnl": 0.0, "account": {}}
+    except: return {"active": False, "connected": False, "connect_intent": False, "symbol": "BTCUSD", "lots": 0.50, "sl_points": 15, "trail_points": 5, "history": [], "total_pnl": 0.0, "account": {}}
 
 @app.route('/')
 def index(): return render_template_string(HTML_TEMPLATE)
@@ -210,20 +236,16 @@ def api_state(): return jsonify(get_state())
 def api_settings():
     data = request.json
     state = get_state()
-    if "terminal_path" in data:
-        state["terminal_path"] = data["terminal_path"]
-        state["connect_intent"] = True 
-    if "lots" in data: state["lots"] = data["lots"]
+    for key in ["terminal_path", "lots", "sl_points", "trail_points", "symbol"]:
+        if key in data: state[key] = data[key]
+    if "connect_intent" in data: state["connect_intent"] = True
     with open(STATE_FILE, 'w') as f: json.dump(state, f)
     return jsonify(state)
 
 @app.route('/api/disconnect', methods=['POST'])
 def api_disconnect():
     state = get_state()
-    state["connected"] = False
-    state["connect_intent"] = False
-    state["active"] = False 
-    state["account"] = {}
+    state["connected"] = False; state["connect_intent"] = False; state["active"] = False; state["account"] = {}
     with open(STATE_FILE, 'w') as f: json.dump(state, f)
     return jsonify(state)
 

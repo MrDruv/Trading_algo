@@ -3,30 +3,35 @@ import numpy as np
 
 def superb_momentum_logic(df, i, params):
     if i < 30: return 0
-
-    # 1. FASTER EMA Momentum (5/13) for quicker reaction
-    ema_fast = df['close'].ewm(span=5, adjust=False).mean()
-    ema_slow = df['close'].ewm(span=13, adjust=False).mean()
-
-    # 2. FVG Detection (3 candle imbalance)
-    fvg_bullish = df['low'].iloc[i-2] > df['high'].iloc[i]
-    fvg_bearish = df['high'].iloc[i-2] < df['low'].iloc[i]
-
-    # 3. 15-min Breakout Levels (Strong barrier)
+    
+    # 1. Indicators
+    ema9 = df['close'].ewm(span=9, adjust=False).mean()
+    ema21 = df['close'].ewm(span=21, adjust=False).mean()
+    
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rsi = 100 - (100 / (1 + (gain/loss))) if loss.iloc[i] != 0 else 100
+    
     hh = df['high'].iloc[i-16:i-1].max()
     ll = df['low'].iloc[i-16:i-1].min()
-
     price = df['close'].iloc[i]
-
-    # LOGIC:
-    # BUY if trend is UP (EMA 5 > 13) AND (Strong Breakout OR FVG)
-    if ema_fast.iloc[i] > ema_slow.iloc[i]:
-        if price > hh or fvg_bullish:
-            return 1
-
-    # SELL if trend is DOWN (EMA 5 < 13) AND (Strong Breakout OR FVG)
-    if ema_fast.iloc[i] < ema_slow.iloc[i]:
-        if price < ll or fvg_bearish:
-            return -1
-
+    
+    # --- ASSET SWITCHING LOGIC ---
+    # We detect the asset by the price level (BTC > 10000, Gold < 5000)
+    is_gold = price < 5000
+    
+    if is_gold:
+        # GOLD STRATEGY: EMA Pullback (Higher Win Rate)
+        # Long: Price pulls back to EMA 9/21 in uptrend
+        if ema9.iloc[i] > ema21.iloc[i]:
+            if price <= ema9.iloc[i] and rsi.iloc[i] > 40: return 1
+        # Short: Price pulls back to EMA 9/21 in downtrend
+        if ema9.iloc[i] < ema21.iloc[i]:
+            if price >= ema9.iloc[i] and rsi.iloc[i] < 60: return -1
+    else:
+        # BTC STRATEGY: Momentum Breakout (Superb Version)
+        if ema9.iloc[i] > ema21.iloc[i] and price > hh: return 1
+        if ema9.iloc[i] < ema21.iloc[i] and price < ll: return -1
+            
     return 0
