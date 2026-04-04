@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-def active_momentum_scalp(df, i, params):
+def superb_momentum_logic(df, i, params):
     if i < 30: return 0
     
     # 1. EMA Momentum
@@ -18,7 +18,7 @@ def active_momentum_scalp(df, i, params):
     
     price = df['close'].iloc[i]
     
-    # Entry Logic (Higher Sensitivity)
+    # EXACT logic that was working superbly:
     # Long: Trend up (EMA) + (FVG or Breakout)
     if ema9.iloc[i] > ema21.iloc[i]:
         if fvg_bullish or price > hh:
