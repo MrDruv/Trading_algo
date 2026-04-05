@@ -1,96 +1,112 @@
 import pandas as pd
 import numpy as np
-import MetaTrader5 as mt5
-from datetime import datetime, timezone
 
-TERMINAL_PATH = r"C:\Users\HP Power\AppData\Roaming\FundedNext MT5 Terminal\terminal64.exe"
-SYMBOL = "BTCUSD"
-
-def analyze_elite_scalp():
-    if not mt5.initialize(path=TERMINAL_PATH):
-        print("MT5 Init Failed")
-        return
-
-    # 1. HTF Dealing Range (1H) - Last 24-48 hours
-    rates_1h = mt5.copy_rates_from_pos(SYMBOL, mt5.TIMEFRAME_H1, 0, 48)
-    df_1h = pd.DataFrame(rates_1h)
-    swing_high = df_1h['high'].max()
-    swing_low = df_1h['low'].min()
-    equilibrium = (swing_high + swing_low) / 2
+def run_elite_analysis(filename, symbol_name):
+    print(f"\n--- ANALYZING ELITE STRATEGY: {symbol_name} ---")
+    df = pd.read_parquet(filename)
     
-    current_price = df_1h['close'].iloc[-1]
-    htf_bias = "PREMIUM (Short Only)" if current_price > equilibrium else "DISCOUNT (Long Only)"
-
-    # 2. Liquidity Points (15M)
-    rates_15m = mt5.copy_rates_from_pos(SYMBOL, mt5.TIMEFRAME_M15, 0, 100)
-    df_15m = pd.DataFrame(rates_15m)
-    pdh = df_1h['high'].iloc[-24:].max() # Prev Day High approx
-    pdl = df_1h['low'].iloc[-24:].min() # Prev Day Low approx
+    # 1. Indicator Calculations
+    df['ema21'] = df['close'].ewm(span=21, adjust=False).mean()
+    df['ema50'] = df['close'].ewm(span=50, adjust=False).mean()
+    df['ema200'] = df['close'].ewm(span=200, adjust=False).mean()
     
-    # 3. Session Check (UTC)
-    # London Open: 07:00-10:00 | NY Open: 13:00-16:00
-    now_utc = datetime.now(timezone.utc)
-    hour = now_utc.hour
-    is_killzone = (7 <= hour < 10) or (13 <= hour < 16)
-    session_str = "NY Afternoon (Low Prob)"
-    if 7 <= hour < 10: session_str = "London Killzone"
-    if 13 <= hour < 16: session_str = "NY Killzone"
-
-    # 4. LTF Execution (1M) - Looking for Sweep + BOS + FVG
-    rates_1m = mt5.copy_rates_from_pos(SYMBOL, mt5.TIMEFRAME_M1, 0, 60)
-    df_1m = pd.DataFrame(rates_1m)
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=7).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=7).mean()
+    df['rsi7'] = 100 - (100 / (1 + (gain/loss)))
     
-    # Check for recent sweep (last 15 mins)
-    recent_high = df_1m['high'].iloc[-15:-1].max()
-    recent_low = df_1m['low'].iloc[-15:-1].min()
+    df['tr'] = np.maximum(df['high'] - df['low'], np.maximum(abs(df['high'] - df['close'].shift(1)), abs(df['low'] - df['close'].shift(1))))
+    df['atr14'] = df['tr'].rolling(14).mean()
+    df['vol_ma20'] = df['tick_volume'].rolling(20).mean()
     
-    sweep_high = df_1m['high'].iloc[-1] > recent_high
-    sweep_low = df_1m['low'].iloc[-1] < recent_low
+    df['bb_mid'] = df['close'].rolling(20).mean()
+    df['bb_std'] = df['close'].rolling(20).std()
+    df['bb_up'] = df['bb_mid'] + (2.0 * df['bb_std'])
+    df['bb_low'] = df['bb_mid'] - (2.0 * df['bb_std'])
     
-    # Check for FVG (3 candle pattern)
-    # Bearish FVG: Candle 1 Low > Candle 3 High
-    fvg_bearish = df_1m['low'].iloc[-3] > df_1m['high'].iloc[-1]
-    # Bullish FVG: Candle 1 High < Candle 3 Low
-    fvg_bullish = df_1m['high'].iloc[-3] < df_1m['low'].iloc[-1]
+    df['tp_p'] = (df['high'] + df['low'] + df['close']) / 3
+    df['vwap'] = (df['tp_p'] * df['tick_volume']).cumsum() / df['tick_volume'].cumsum()
+    df['ema_slope'] = df['ema50'].diff(5).abs()
 
-    # Displacement Check (Body size > 2x average body of last 10)
-    df_1m['body'] = (df_1m['close'] - df_1m['open']).abs()
-    avg_body = df_1m['body'].iloc[-11:-1].mean()
-    displacement = df_1m['body'].iloc[-1] > (avg_body * 1.5)
+    # Pattern Detectors
+    def is_bull_pattern(i):
+        curr, prev = df.iloc[i], df.iloc[i-1]
+        engulfing = (prev.close < prev.open) and (curr.close > curr.open) and (curr.close > prev.open) and (curr.open < prev.close)
+        pinbar = (abs(curr.close - curr.open) < 0.3 * (curr.high - curr.low)) and ((min(curr.open, curr.close) - curr.low) > 0.6 * (curr.high - curr.low))
+        return engulfing or pinbar
 
-    print(f"--- ELITE LIQUIDITY ANALYSIS ---")
-    print(f"Time (UTC): {now_utc.strftime('%H:%M:%S')} | Session: {session_str}")
-    print(f"HTF Range: {swing_low:.2f} - {swing_high:.2f} | Eq: {equilibrium:.2f}")
-    print(f"Current Price: {current_price:.2f} | Bias: {htf_bias}")
-    print(f"Recent Sweep: High={sweep_high}, Low={sweep_low}")
-    print(f"Displacement: {displacement} | FVG: Bull={fvg_bullish}, Bear={fvg_bearish}")
+    def is_bear_pattern(i):
+        curr, prev = df.iloc[i], df.iloc[i-1]
+        engulfing = (prev.close > prev.open) and (curr.close < curr.open) and (curr.close < prev.open) and (curr.open > prev.close)
+        pinbar = (abs(curr.close - curr.open) < 0.3 * (curr.high - curr.low)) and ((curr.high - max(curr.open, curr.close)) > 0.6 * (curr.high - curr.low))
+        return engulfing or pinbar
 
-    # FINAL MODEL EXECUTION
-    if not is_killzone:
-        print("\nRESULT: NO TRADE (no edge present - outside Killzone)")
-    else:
-        # SHORT SETUP
-        if htf_bias == "PREMIUM (Short Only)" and sweep_high and displacement and fvg_bearish:
-            sl = df_1m['high'].iloc[-1] + 5.0
-            entry = df_1m['low'].iloc[-3] # Entry at FVG top
-            tp1 = current_price - 50.0
-            print(f"\nRESULT: SHORT | Confidence: High")
-            print(f"Setup: Liquidity sweep + Displacement + FVG Entry")
-            print(f"Entry: {entry:.2f} | SL: {sl:.2f} | TP1: {tp1:.2f}")
-        
-        # LONG SETUP
-        elif htf_bias == "DISCOUNT (Long Only)" and sweep_low and displacement and fvg_bullish:
-            sl = df_1m['low'].iloc[-1] - 5.0
-            entry = df_1m['high'].iloc[-3] # Entry at FVG bottom
-            tp1 = current_price + 50.0
-            print(f"\nRESULT: LONG | Confidence: High")
-            print(f"Setup: Liquidity sweep + Displacement + FVG Entry")
-            print(f"Entry: {entry:.2f} | SL: {sl:.2f} | TP1: {tp1:.2f}")
-        
+    # 2. Backtest engine
+    trades = []
+    in_pos = False
+    pos_type = 0
+    entry_p, sl, tp = 0, 0, 0
+    balance = 10000.0
+    
+    for i in range(200, len(df)):
+        row = df.iloc[i]
+        if not in_pos:
+            # TRENDING FILTER
+            uptrend = row.ema21 > row.ema50 > row.ema200
+            downtrend = row.ema21 < row.ema50 < row.ema200
+            ranging = row.ema_slope < (row.close * 0.0003)
+            
+            sig = 0
+            # Strategy A: Pullback
+            if uptrend and row.low <= row.ema21 and row.close > row.ema21:
+                if is_bull_pattern(i) and 40 <= row.rsi7 <= 60 and row.tick_volume > (row.vol_ma20 * 1.3) and row.close > row.vwap:
+                    sig, sl_d = 1, abs(row.close - (row.ema50 - row.atr14 * 0.3))
+            elif downtrend and row.high >= row.ema21 and row.close < row.ema21:
+                if is_bear_pattern(i) and 40 <= row.rsi7 <= 60 and row.tick_volume > (row.vol_ma20 * 1.3) and row.close < row.vwap:
+                    sig, sl_d = -1, abs(row.close - (row.ema50 + row.atr14 * 0.3))
+            
+            # Strategy B: Mean Reversion
+            elif ranging:
+                if row.low <= row.bb_low and row.rsi7 < 30 and row.close > row.open and row.tick_volume > (row.vol_ma20 * 1.2):
+                    sig, sl_d = 1, row.atr14
+                elif row.high >= row.bb_up and row.rsi7 > 70 and row.close < row.open and row.tick_volume > (row.vol_ma20 * 1.2):
+                    sig, sl_d = -1, row.atr14
+
+            if sig != 0:
+                in_pos, pos_type, entry_p = True, sig, row.close
+                # 1% risk lot sizing
+                lots = (balance * 0.01) / sl_d if sl_d > 0 else 0
+                lots = min(lots, 0.5)
+                sl = entry_p - (pos_type * sl_d)
+                tp = entry_p + (pos_type * sl_d * 1.2) if not ranging else row.bb_mid
+
         else:
-            print("\nRESULT: NO TRADE (no edge present)")
+            # Trailing & Exit
+            atr = row.atr14
+            p_pts = (row.close - entry_p) if pos_type == 1 else (entry_p - row.close)
+            if p_pts >= atr * 0.8:
+                new_sl = row.close - (pos_type * atr * 0.4)
+                if (pos_type == 1 and new_sl > sl) or (pos_type == -1 and new_sl < sl): sl = new_sl
+            
+            pnl = 0
+            if (pos_type == 1 and row.low <= sl) or (pos_type == -1 and row.high >= sl): pnl = (sl - entry_p) * pos_type * lots; in_pos = False
+            elif (pos_type == 1 and row.high >= tp) or (pos_type == -1 and row.low <= tp): pnl = (tp - entry_p) * pos_type * lots; in_pos = False
+            
+            if not in_pos:
+                balance += pnl
+                trades.append(pnl)
 
-    mt5.shutdown()
+    if trades:
+        res = pd.Series(trades)
+        wr = len(res[res > 0]) / len(res)
+        pf = res[res > 0].sum() / abs(res[res < 0].sum()) if len(res[res < 0]) > 0 else 99
+        print(f"Win Rate: {wr:.1%}")
+        print(f"Profit Factor: {pf:.2f}")
+        print(f"Total Trades: {len(trades)}")
+        print(f"Final Balance: ${balance:.2f}")
+    else:
+        print("No trades triggered.")
 
 if __name__ == "__main__":
-    analyze_elite_scalp()
+    run_elite_analysis('btcusd_m5_large.parquet', 'BTCUSD')
+    run_elite_analysis('ethusd_m5_large.parquet', 'ETHUSD')

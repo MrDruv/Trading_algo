@@ -1,37 +1,24 @@
 import pandas as pd
 import numpy as np
 
-def superb_momentum_logic(df, i, params):
-    if i < 30: return 0
+def superb_momentum_logic(df_m1, df_m5, i, params):
+    """
+    V7.2 UNIFIED ENGINE: 5-min Structural Breakout for all assets.
+    The research-backed champion for both BTC and Gold.
+    """
+    if i < 15: return 0
     
-    # 1. Indicators
-    ema9 = df['close'].ewm(span=9, adjust=False).mean()
-    ema21 = df['close'].ewm(span=21, adjust=False).mean()
+    price = df_m1['close'].iloc[i]
     
-    delta = df['close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rsi = 100 - (100 / (1 + (gain/loss))) if loss.iloc[i] != 0 else 100
+    # 1. Unified 5-min Structural Range
+    # (Checking the High/Low of the previous 5 M1 candles)
+    hh = df_m1['high'].iloc[i-6:i-1].max()
+    ll = df_m1['low'].iloc[i-6:i-1].min()
     
-    hh = df['high'].iloc[i-16:i-1].max()
-    ll = df['low'].iloc[i-16:i-1].min()
-    price = df['close'].iloc[i]
-    
-    # --- ASSET SWITCHING LOGIC ---
-    # We detect the asset by the price level (BTC > 10000, Gold < 5000)
-    is_gold = price < 5000
-    
-    if is_gold:
-        # GOLD STRATEGY: EMA Pullback (Higher Win Rate)
-        # Long: Price pulls back to EMA 9/21 in uptrend
-        if ema9.iloc[i] > ema21.iloc[i]:
-            if price <= ema9.iloc[i] and rsi.iloc[i] > 40: return 1
-        # Short: Price pulls back to EMA 9/21 in downtrend
-        if ema9.iloc[i] < ema21.iloc[i]:
-            if price >= ema9.iloc[i] and rsi.iloc[i] < 60: return -1
-    else:
-        # BTC STRATEGY: Momentum Breakout (Superb Version)
-        if ema9.iloc[i] > ema21.iloc[i] and price > hh: return 1
-        if ema9.iloc[i] < ema21.iloc[i] and price < ll: return -1
+    # 2. Breakout Execution
+    if price > hh:
+        return 1 # Bullish Breakout
+    if price < ll:
+        return -1 # Bearish Breakout
             
     return 0
