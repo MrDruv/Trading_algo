@@ -26,7 +26,7 @@ HTML_TEMPLATE = """
         .logo span { color: var(--accent); }
         .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 16px; padding: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); margin-bottom: 20px; }
         .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
-        h2 { font-size: 12px; text-transform: uppercase; color: var(--text-dim); margin-top: 0; margin-bottom: 15px; letter-spacing: 1px; }
+        h2 { font-size: 12px; text-transform: uppercase; color: var(--text-dim); margin-top: 0; margin-bottom: 15px; letter-spacing: 1px; }        
         label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 5px; }
         input, select { width: 100%; background: var(--bg); border: 1px solid var(--border); padding: 10px; border-radius: 8px; color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px; margin-bottom: 10px; }
         .btn { padding: 12px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; font-size: 13px; width: 100%; }
@@ -83,15 +83,11 @@ HTML_TEMPLATE = """
                     <div><label>Asset</label><select id="target-symbol"><option value="BTCUSD">BTCUSD</option><option value="XAUUSD">XAUUSD</option></select></div>
                     <div><label>Lots</label><input type="number" id="lot-size" step="0.01"></div>
                 </div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; text-align:left">
-                    <div><label>SL (Points)</label><input type="number" id="sl-points" step="1"></div>
-                    <div><label>Trail (Points)</label><input type="number" id="trail-points" step="1"></div>
-                </div>
+                <!-- SL and Trail Surgically Removed -->
                 <div id="algo-status" style="font-weight:700; margin:10px 0">STANDBY</div>
-                <button id="toggle-btn" class="btn btn-success">START ALGO</button>
+                <button id="toggle-btn" class="btn btn-success">START BOT</button>
             </div>
 
-            <!-- ASSET ONLY ANALYSIS -->
             <div class="card" style="text-align:center">
                 <h2><span class="active-asset-name">...</span> Performance</h2>
                 <div id="asset-pnl-text" class="pnl-value">$0.00</div>
@@ -102,7 +98,6 @@ HTML_TEMPLATE = """
             </div>
         </div>
 
-        <!-- ASSET ONLY HISTORY -->
         <div class="card">
             <h2><span class="active-asset-name">...</span> Order History</h2>
             <table>
@@ -133,8 +128,6 @@ HTML_TEMPLATE = """
             if (!window.uiInit) {
                 document.getElementById('mt5-path').value = s.terminal_path || "";
                 document.getElementById('lot-size').value = s.lots || 0.50;
-                document.getElementById('sl-points').value = s.sl_points || 15;
-                document.getElementById('trail-points').value = s.trail_points || 5;
                 document.getElementById('target-symbol').value = s.symbol || "BTCUSD";
                 window.uiInit = true;
             }
@@ -164,11 +157,11 @@ HTML_TEMPLATE = """
                 tb.disabled = false;
             }
 
-            // ASSET SPECIFIC ANALYSIS
             const currentSymbol = document.getElementById('target-symbol').value;
             document.querySelectorAll('.active-asset-name').forEach(el => el.innerText = currentSymbol);
             
-            const assetTrades = s.history.filter(t => t.symbol === currentSymbol);
+            // FIXED: Matching logic for history (match the base symbol)
+            const assetTrades = s.history.filter(t => t.symbol.includes(currentSymbol.substring(0, 3)));
             const assetClosed = assetTrades.filter(t => t.profit !== 0);
             const assetPnl = assetTrades.reduce((acc, t) => acc + t.profit, 0);
             const assetWinRate = assetClosed.length > 0 ? ((assetClosed.filter(t => t.profit > 0).length / assetClosed.length) * 100).toFixed(1) + "%" : "0.0%";
@@ -187,11 +180,8 @@ HTML_TEMPLATE = """
                 </tr>
             `).join('');
 
-            // LOCK INPUTS
             document.getElementById('target-symbol').disabled = s.active;
             document.getElementById('lot-size').disabled = s.active;
-            document.getElementById('sl-points').disabled = s.active;
-            document.getElementById('trail-points').disabled = s.active;
         }
 
         document.getElementById('connect-btn').onclick = async () => {
@@ -202,8 +192,6 @@ HTML_TEMPLATE = """
         document.getElementById('toggle-btn').onclick = async () => {
             const settings = {
                 lots: parseFloat(document.getElementById('lot-size').value),
-                sl_points: parseFloat(document.getElementById('sl-points').value),
-                trail_points: parseFloat(document.getElementById('trail-points').value),
                 symbol: document.getElementById('target-symbol').value
             };
             await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(settings) });
@@ -219,12 +207,12 @@ HTML_TEMPLATE = """
 
 def get_state():
     if not os.path.exists(STATE_FILE):
-        initial = {"active": False, "connected": False, "connect_intent": False, "symbol": "BTCUSD", "lots": 0.50, "sl_points": 15, "trail_points": 5, "history": [], "total_pnl": 0.0, "account": {}}
+        initial = {"active": False, "connected": False, "connect_intent": False, "symbol": "BTCUSD", "lots": 0.50, "sl_points": 15, "history": [], "total_pnl": 0.0, "account": {}}
         with open(STATE_FILE, 'w') as f: json.dump(initial, f)
         return initial
     try:
         with open(STATE_FILE, 'r') as f: return json.load(f)
-    except: return {"active": False, "connected": False, "connect_intent": False, "symbol": "BTCUSD", "lots": 0.50, "sl_points": 15, "trail_points": 5, "history": [], "total_pnl": 0.0, "account": {}}
+    except: return {"active": False, "connected": False, "connect_intent": False, "symbol": "BTCUSD", "lots": 0.50, "sl_points": 15, "history": [], "total_pnl": 0.0, "account": {}}
 
 @app.route('/')
 def index(): return render_template_string(HTML_TEMPLATE)
@@ -236,7 +224,7 @@ def api_state(): return jsonify(get_state())
 def api_settings():
     data = request.json
     state = get_state()
-    for key in ["terminal_path", "lots", "sl_points", "trail_points", "symbol"]:
+    for key in ["terminal_path", "lots", "symbol"]:
         if key in data: state[key] = data[key]
     if "connect_intent" in data: state["connect_intent"] = True
     with open(STATE_FILE, 'w') as f: json.dump(state, f)

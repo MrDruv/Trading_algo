@@ -1,112 +1,60 @@
 import pandas as pd
 import numpy as np
 
-def run_elite_analysis(filename, symbol_name):
-    print(f"\n--- ANALYZING ELITE STRATEGY: {symbol_name} ---")
-    df = pd.read_parquet(filename)
+def run_session_research():
+    print("Analyzing 1:1 RR Strategy during London & NY Sessions (08:00-21:00 UTC)...")
     
-    # 1. Indicator Calculations
-    df['ema21'] = df['close'].ewm(span=21, adjust=False).mean()
-    df['ema50'] = df['close'].ewm(span=50, adjust=False).mean()
-    df['ema200'] = df['close'].ewm(span=200, adjust=False).mean()
-    
-    delta = df['close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=7).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=7).mean()
-    df['rsi7'] = 100 - (100 / (1 + (gain/loss)))
-    
-    df['tr'] = np.maximum(df['high'] - df['low'], np.maximum(abs(df['high'] - df['close'].shift(1)), abs(df['low'] - df['close'].shift(1))))
-    df['atr14'] = df['tr'].rolling(14).mean()
-    df['vol_ma20'] = df['tick_volume'].rolling(20).mean()
-    
-    df['bb_mid'] = df['close'].rolling(20).mean()
-    df['bb_std'] = df['close'].rolling(20).std()
-    df['bb_up'] = df['bb_mid'] + (2.0 * df['bb_std'])
-    df['bb_low'] = df['bb_mid'] - (2.0 * df['bb_std'])
-    
-    df['tp_p'] = (df['high'] + df['low'] + df['close']) / 3
-    df['vwap'] = (df['tp_p'] * df['tick_volume']).cumsum() / df['tick_volume'].cumsum()
-    df['ema_slope'] = df['ema50'].diff(5).abs()
-
-    # Pattern Detectors
-    def is_bull_pattern(i):
-        curr, prev = df.iloc[i], df.iloc[i-1]
-        engulfing = (prev.close < prev.open) and (curr.close > curr.open) and (curr.close > prev.open) and (curr.open < prev.close)
-        pinbar = (abs(curr.close - curr.open) < 0.3 * (curr.high - curr.low)) and ((min(curr.open, curr.close) - curr.low) > 0.6 * (curr.high - curr.low))
-        return engulfing or pinbar
-
-    def is_bear_pattern(i):
-        curr, prev = df.iloc[i], df.iloc[i-1]
-        engulfing = (prev.close > prev.open) and (curr.close < curr.open) and (curr.close < prev.open) and (curr.open > prev.close)
-        pinbar = (abs(curr.close - curr.open) < 0.3 * (curr.high - curr.low)) and ((curr.high - max(curr.open, curr.close)) > 0.6 * (curr.high - curr.low))
-        return engulfing or pinbar
-
-    # 2. Backtest engine
-    trades = []
-    in_pos = False
-    pos_type = 0
-    entry_p, sl, tp = 0, 0, 0
-    balance = 10000.0
-    
-    for i in range(200, len(df)):
-        row = df.iloc[i]
-        if not in_pos:
-            # TRENDING FILTER
-            uptrend = row.ema21 > row.ema50 > row.ema200
-            downtrend = row.ema21 < row.ema50 < row.ema200
-            ranging = row.ema_slope < (row.close * 0.0003)
+    def analyze(filename, is_btc):
+        df = pd.read_parquet(filename)
+        df['time'] = pd.to_datetime(df['time'], unit='s')
+        
+        # Risk settings
+        sl_pts = 50.0 if is_btc else 2.0
+        
+        trades = []
+        # Filter for London + NY Session (08:00 to 21:00 UTC)
+        df_session = df[(df['time'].dt.hour >= 8) & (df['time'].dt.hour < 21)]
+        
+        # Find signals in the session
+        for i in range(15, len(df_session), 5):
+            row = df_session.iloc[i]
+            # 5-min Breakout
+            hh = df_session['high'].iloc[i-6:i-1].max()
+            ll = df_session['low'].iloc[i-6:i-1].min()
             
             sig = 0
-            # Strategy A: Pullback
-            if uptrend and row.low <= row.ema21 and row.close > row.ema21:
-                if is_bull_pattern(i) and 40 <= row.rsi7 <= 60 and row.tick_volume > (row.vol_ma20 * 1.3) and row.close > row.vwap:
-                    sig, sl_d = 1, abs(row.close - (row.ema50 - row.atr14 * 0.3))
-            elif downtrend and row.high >= row.ema21 and row.close < row.ema21:
-                if is_bear_pattern(i) and 40 <= row.rsi7 <= 60 and row.tick_volume > (row.vol_ma20 * 1.3) and row.close < row.vwap:
-                    sig, sl_d = -1, abs(row.close - (row.ema50 + row.atr14 * 0.3))
+            if row['close'] > hh: sig = 1
+            elif row['close'] < ll: sig = -1
             
-            # Strategy B: Mean Reversion
-            elif ranging:
-                if row.low <= row.bb_low and row.rsi7 < 30 and row.close > row.open and row.tick_volume > (row.vol_ma20 * 1.2):
-                    sig, sl_d = 1, row.atr14
-                elif row.high >= row.bb_up and row.rsi7 > 70 and row.close < row.open and row.tick_volume > (row.vol_ma20 * 1.2):
-                    sig, sl_d = -1, row.atr14
-
             if sig != 0:
-                in_pos, pos_type, entry_p = True, sig, row.close
-                # 1% risk lot sizing
-                lots = (balance * 0.01) / sl_d if sl_d > 0 else 0
-                lots = min(lots, 0.5)
-                sl = entry_p - (pos_type * sl_d)
-                tp = entry_p + (pos_type * sl_d * 1.2) if not ranging else row.bb_mid
+                # 1:1 Simulation
+                target = row['close'] + (sig * sl_pts)
+                stop = row['close'] - (sig * sl_pts)
+                
+                # Check outcome in next 120 mins
+                future = df_session['close'].iloc[i+1 : i+121]
+                if len(future) < 10: continue
+                
+                win = False
+                for p in future:
+                    if sig == 1:
+                        if p >= target: win = True; break
+                        if p <= stop: break
+                    else:
+                        if p <= target: win = True; break
+                        if p >= stop: break
+                trades.append(1 if win else -1)
+        
+        if not trades: return 0, 0
+        wr = len([t for t in trades if t > 0]) / len(trades)
+        return wr, len(trades)
 
-        else:
-            # Trailing & Exit
-            atr = row.atr14
-            p_pts = (row.close - entry_p) if pos_type == 1 else (entry_p - row.close)
-            if p_pts >= atr * 0.8:
-                new_sl = row.close - (pos_type * atr * 0.4)
-                if (pos_type == 1 and new_sl > sl) or (pos_type == -1 and new_sl < sl): sl = new_sl
-            
-            pnl = 0
-            if (pos_type == 1 and row.low <= sl) or (pos_type == -1 and row.high >= sl): pnl = (sl - entry_p) * pos_type * lots; in_pos = False
-            elif (pos_type == 1 and row.high >= tp) or (pos_type == -1 and row.low <= tp): pnl = (tp - entry_p) * pos_type * lots; in_pos = False
-            
-            if not in_pos:
-                balance += pnl
-                trades.append(pnl)
-
-    if trades:
-        res = pd.Series(trades)
-        wr = len(res[res > 0]) / len(res)
-        pf = res[res > 0].sum() / abs(res[res < 0].sum()) if len(res[res < 0]) > 0 else 99
-        print(f"Win Rate: {wr:.1%}")
-        print(f"Profit Factor: {pf:.2f}")
-        print(f"Total Trades: {len(trades)}")
-        print(f"Final Balance: ${balance:.2f}")
-    else:
-        print("No trades triggered.")
+    btc_wr, btc_count = analyze('btcusd_30d_m1.parquet', True)
+    gold_wr, gold_count = analyze('xauusd_30d_m1.parquet', False)
+    
+    print(f"\n--- SESSION RESULTS (08:00-21:00 UTC) ---")
+    print(f"BTCUSD: Win Rate: {btc_wr:.1%} | Total Trades: {btc_count}")
+    print(f"XAUUSD: Win Rate: {gold_wr:.1%} | Total Trades: {gold_count}")
 
 if __name__ == "__main__":
-    run_elite_analysis('btcusd_m5_large.parquet', 'BTCUSD')
-    run_elite_analysis('ethusd_m5_large.parquet', 'ETHUSD')
+    run_session_research()
