@@ -97,12 +97,17 @@ def run_bot():
                     
                     if new_sl != 0:
                         # Only update if target is better than current SL
-                        should_update = (new_sl > p_sl + (s_info.point * 2)) if is_buy else (p_sl == 0 or new_sl < p_sl - (s_info.point * 2))
+                        should_update = (new_sl > p_sl + (inst.point * 2)) if is_buy else (p_sl == 0 or new_sl < p_sl - (inst.point * 2))
                         
                         if should_update:
-                            res = mt5.order_send({"action": mt5.TRADE_ACTION_SLTP, "position": pos.ticket, "symbol": symbol, "sl": round(new_sl, digits), "tp": pos.tp, "magic": MAGIC_NUMBER})
-                            if res and res.retcode == mt5.TRADE_RETCODE_DONE:
-                                print(f"\n[RAPID-LOCK] {symbol} SL -> {round(new_sl, digits)} (Profit: ${p_profit:.2f})")
+                            # FIXED: Increased safety gap to 10 points to avoid broker 'Invalid Stops'
+                            min_gap = max(inst.stops_level * inst.point, inst.point * 10)
+                            if abs(p_cur - target_sl) >= min_gap:
+                                res = mt5.order_send({"action": mt5.TRADE_ACTION_SLTP, "position": pos.ticket, "symbol": pos.symbol, "sl": round(target_sl, inst.digits), "tp": pos.tp, "magic": MAGIC_NUMBER})
+                                if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+                                    print(f"\n[RAPID-LOCK] {pos.symbol} SL -> {round(target_sl, inst.digits)} (Profit: ${p_profit:.2f})")
+                                elif res:
+                                    print(f"\n[TRAIL ERROR] {pos.symbol}: {res.comment}")
 
             # 2. SIGNAL SCAN
             rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M1, 0, 50)
