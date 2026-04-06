@@ -7,7 +7,7 @@ import pandas as pd
 from train import superb_momentum_logic
 
 # ---------------------------------------------------------------------------
-# V8.7 UNIFIED PROFIT ENGINE - TARGETS + RAPID TRAILING
+# V9.0 BULLETPROOF ENGINE - SINGLE ENTRY LOCK + RESTORED TRAILING
 # ---------------------------------------------------------------------------
 
 MAGIC_NUMBER = 111999
@@ -44,10 +44,10 @@ def sync_account_info(symbol):
         with open(STATE_FILE, 'w') as f: json.dump(state, f)
 
 def run_bot():
-    print("Diamond Engine V8.7 - Unified Profit Engine Active.")
+    print("Diamond Engine V9.0 - Bulletproof Multi-Trade Fix Active.")
     mt5.initialize(path=DEFAULT_TERMINAL_PATH)
 
-    last_time = None
+    last_entry_time = None
     while True:
         try:
             state = get_state()
@@ -61,17 +61,42 @@ def run_bot():
             s_info = mt5.symbol_info(symbol)
             if not s_info: time.sleep(2); continue
             
-            # FIXED: Define all_pos here so it is available for the rest of the loop
+            # --- CRITICAL: ALL POSITIONS DEFINED AT TOP ---
             all_pos = mt5.positions_get()
 
-            # --- V8.8 STRICT 1:1 ENGINE (NO TRAILING) ---
-            # Trailing logic removed as requested. 
-            # Trades will only exit via Hard TP or Hard SL.
-            try:
-                pass 
-            except Exception as e: pass
+            # --- 1. ASSET-SPECIFIC TRAILING ENGINE ---
+            if all_pos:
+                for pos in all_pos:
+                    if symbol[:6].upper() not in pos.symbol.upper(): continue
+                    
+                    p_cur, p_open, p_sl, p_tp = pos.price_current, pos.price_open, pos.sl, pos.tp
+                    is_buy = (pos.type == mt5.POSITION_TYPE_BUY)
+                    p_profit = (p_cur - p_open) if is_buy else (p_open - p_cur)
+                    is_btc_pos = "BTC" in pos.symbol.upper()
+                    
+                    new_sl = 0
+                    if is_btc_pos:
+                        # BTC LOGIC (STAYS SAME): Lock Break-even at $10, then $5 trail
+                        if p_profit >= 10.0:
+                            calc_sl = p_cur - 5.0 if is_buy else p_cur + 5.0
+                            be_level = p_open + 1.0 if is_buy else p_open - 1.0
+                            new_sl = max(calc_sl, be_level) if is_buy else min(calc_sl, be_level)
+                    else:
+                        # GOLD LOGIC (RISK-HALVER): If profit hits $1 (50% of target), move SL to half risk
+                        if p_profit >= 1.0: # 50% of $2 target
+                            # Set SL to -$1.00 risk from entry (Half of initial $2 risk)
+                            new_sl = p_open - 1.0 if is_buy else p_open + 1.0
+                    
+                    if new_sl != 0:
+                        digits = mt5.symbol_info(pos.symbol).digits
+                        should_update = (new_sl > p_sl + 0.01) if is_buy else (p_sl == 0 or new_sl < p_sl - 0.01)
+                        if should_update:
+                            min_gap = max(s_info.trade_stops_level * s_info.point, s_info.point * 10)
+                            if abs(p_cur - new_sl) >= min_gap:
+                                mt5.order_send({"action": mt5.TRADE_ACTION_SLTP, "position": pos.ticket, "symbol": pos.symbol, "sl": round(new_sl, digits), "tp": p_tp, "magic": pos.magic})
+                                if not is_btc_pos: print(f"\n[GOLD-HALVER] Risk reduced to $1.00 (Profit: ${p_profit:.2f})")
 
-            # 2. SIGNAL SCAN
+            # --- 2. SIGNAL SCAN (WITH SINGLE-ENTRY LOCK) ---
             if not state["active"]: 
                 print(f"\r[{datetime.now().strftime('%H:%M:%S')}] {symbol} | STANDBY", end="", flush=True)
                 time.sleep(1); continue
@@ -79,30 +104,32 @@ def run_bot():
             rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M1, 0, 50)
             if rates is not None:
                 df = pd.DataFrame(rates); df['time'] = pd.to_datetime(df['time'], unit='s')
+                cur_min = df.iloc[-1]['time']
                 tick = mt5.symbol_info_tick(symbol)
+                
+                # Double Check: Only trade if no active position AND new minute
                 if not all_pos or not any(symbol[:6].upper() in p.symbol.upper() for p in all_pos):
-                    hh = df['high'].iloc[-6:-1].max(); ll = df['low'].iloc[-6:-1].min()
-                    print(f"\r[{datetime.now().strftime('%H:%M:%S')}] {symbol}: ${tick.bid:.2f} | Range: ${ll:.2f}-${hh:.2f}", end="", flush=True)
+                    if last_entry_time is None or cur_min > last_entry_time:
+                        hh = df['high'].iloc[-6:-1].max(); ll = df['low'].iloc[-6:-1].min()
+                        intent = "READY BUY" if tick.ask > hh else ("READY SELL" if tick.bid < ll else "WAITING")
+                        print(f"\r[{datetime.now().strftime('%H:%M:%S')}] {symbol}: ${tick.bid:.2f} | {intent}", end="", flush=True)
 
-                    if last_time is None or df.iloc[-1]['time'] > last_time:
                         signal = superb_momentum_logic(df, None, len(df)-1, {})
                         if signal != 0:
                             price = tick.ask if signal == 1 else tick.bid
-                            # Risk Params (Strict 1:1)
-                            is_btc = "BTC" in symbol.upper()
-                            sl_dist = 50.0 if is_btc else 2.0 
-                            tp_dist = sl_dist # 1:1 RATIO
-                            
-                            sl_price = price - (sl_dist + (tick.ask-tick.bid)) if signal == 1 else price + (sl_dist + (tick.ask-tick.bid))
-                            tp_price = price + tp_dist if signal == 1 else price - tp_dist
+                            risk_pts = 50.0 if "BTC" in symbol.upper() else 2.0
+                            sl_price = price - risk_pts if signal == 1 else price + risk_pts
+                            tp_price = price + risk_pts if signal == 1 else price - risk_pts
                             
                             f_mode = mt5.ORDER_FILLING_FOK if s_info.filling_mode & 1 else (mt5.ORDER_FILLING_IOC if s_info.filling_mode & 2 else mt5.ORDER_FILLING_RETURN)
-                            res = mt5.order_send({"action": mt5.TRADE_ACTION_DEAL, "symbol": symbol, "volume": state.get("lots", 0.10), "type": mt5.ORDER_TYPE_BUY if signal == 1 else mt5.ORDER_TYPE_SELL, "price": price, "sl": round(sl_price, s_info.digits), "tp": round(tp_price, s_info.digits), "magic": MAGIC_NUMBER, "comment": "V8.7_PROFIT", "type_filling": f_mode})
-                            if res.retcode == mt5.TRADE_RETCODE_DONE: 
-                                print(f"\n[SUCCESS] Trade Placed at {price} | TP: {round(tp_price, s_info.digits)}")
-                                last_time = df.iloc[-1]['time']
+                            res = mt5.order_send({"action": mt5.TRADE_ACTION_DEAL, "symbol": symbol, "volume": state.get("lots", 0.10), "type": mt5.ORDER_TYPE_BUY if signal == 1 else mt5.ORDER_TYPE_SELL, "price": price, "sl": round(sl_price, s_info.digits), "tp": round(tp_price, s_info.digits), "magic": MAGIC_NUMBER, "comment": "V9.0_FIX", "type_filling": f_mode})
+                            if res.retcode == mt5.TRADE_RETCODE_DONE:
+                                print(f"\n[SUCCESS] Trade Placed. Locking Minute: {cur_min}")
+                                last_entry_time = cur_min # LOCK THE MINUTE
             time.sleep(0.1)
-        except Exception as outer_err: print(f"\nOuter Error: {outer_err}"); time.sleep(1)
+        except Exception as outer_err: 
+            print(f"\nOuter Error: {outer_err}")
+            time.sleep(1)
 
 if __name__ == "__main__":
     run_bot()
