@@ -8,7 +8,7 @@ import pandas as pd
 from train import superb_momentum_logic
 
 # ---------------------------------------------------------------------------
-# V11.6 - UNLEASHED MOMENTUM (Multi-Entry Per Bar | One-at-a-Time Only)
+# V11.7 - HYBRID PRECISION (1-Trade-Per-Bar + 20s Cooldown)
 # ---------------------------------------------------------------------------
 
 MAGIC_NUMBER = 111999
@@ -69,9 +69,13 @@ def calculate_indicators(df):
     return df
 
 def run_bot():
-    print("Diamond Engine V11.6 - Unleashed Momentum (Multi-Entry Active).")
+    print("Diamond Engine V11.7 - Hybrid Precision Active (Bar Limit + 20s Gap).")
     mt5.initialize(path=DEFAULT_TERMINAL_PATH)
     
+    last_entry_time = None
+    last_trade_finish_time = 0
+    had_position = False
+
     while True:
         try:
             state = get_state()
@@ -102,33 +106,53 @@ def run_bot():
                         if abs(p_cur - new_sl) >= min_gap:
                             mt5.order_send({"action": mt5.TRADE_ACTION_SLTP, "position": pos.ticket, "symbol": pos.symbol, "sl": round(new_sl, digits), "tp": p_tp, "magic": pos.magic})
 
+            # --- COOLDOWN TRACKER ---
+            if current_pos_count > 0:
+                had_position = True
+            elif had_position and current_pos_count == 0:
+                last_trade_finish_time = time.time()
+                had_position = False
+
             if not state["active"]: 
                 print(f"\r[{datetime.now().strftime('%H:%M:%S')}] {symbol} | STANDBY", end="", flush=True); time.sleep(1); continue
 
-            # --- 2. SIGNAL SCAN (NO BAR LIMIT) ---
+            # --- 2. SIGNAL SCAN ---
             rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M1, 0, 50)
             if rates is not None:
                 df = calculate_indicators(pd.DataFrame(rates))
+                cur_min = pd.to_datetime(df['time'].iloc[-1], unit='s')
                 row = df.iloc[-1]; tick = mt5.symbol_info_tick(symbol)
                 
+                # 20-Second Gap Timer
+                cooldown_remaining = max(0, 20 - (time.time() - last_trade_finish_time))
+                
                 if current_pos_count == 0:
-                    is_mom_spike = row['candle_range'] > (row['avg_range'] * 1.5)
-                    adx_ok = row['adx'] > 25
-                    status = "READY" if (adx_ok and is_mom_spike) else ("WAIT (MOM)" if adx_ok else "WAIT (ADX)")
-                    intent = "BUY" if tick.ask > row['hh'] else ("SELL" if tick.bid < row['ll'] else "WAITING")
-                    print(f"\r[{datetime.now().strftime('%H:%M:%S')}] {symbol}: ${tick.bid:.2f} | {status} | {intent}", end="", flush=True)
+                    if last_entry_time is None or cur_min > last_entry_time:
+                        is_mom_spike = row['candle_range'] > (row['avg_range'] * 1.5)
+                        adx_ok = row['adx'] > 25
+                        
+                        status = "READY"
+                        if not adx_ok: status = "WAIT (ADX)"
+                        elif not is_mom_spike: status = "WAIT (MOM)"
+                        if cooldown_remaining > 0: status = f"REST ({int(cooldown_remaining)}s)"
+                        
+                        intent = "BUY" if tick.ask > row['hh'] else ("SELL" if tick.bid < row['ll'] else "WAITING")
+                        print(f"\r[{datetime.now().strftime('%H:%M:%S')}] {symbol}: ${tick.bid:.2f} | {status} | {intent}", end="", flush=True)
 
-                    if adx_ok and is_mom_spike:
-                        signal = 1 if tick.ask > row['hh'] else (-1 if tick.bid < row['ll'] else 0)
-                        if signal != 0:
-                            is_btc = "BTC" in symbol.upper()
-                            sl_pts = 50.0 if is_btc else 1.0; tp_pts = (sl_pts * 3.0) 
-                            price = tick.ask if signal == 1 else tick.bid
-                            sl_price = price - sl_pts if signal == 1 else price + sl_pts
-                            tp_price = price + tp_pts if signal == 1 else price - tp_pts
-                            f_mode = mt5.ORDER_FILLING_FOK if s_info.filling_mode & 1 else (mt5.ORDER_FILLING_IOC if s_info.filling_mode & 2 else mt5.ORDER_FILLING_RETURN)
-                            res = mt5.order_send({"action": mt5.TRADE_ACTION_DEAL, "symbol": symbol, "volume": state.get("lots", 0.10), "type": mt5.ORDER_TYPE_BUY if signal == 1 else mt5.ORDER_TYPE_SELL, "price": price, "sl": round(sl_price, s_info.digits), "tp": round(tp_price, s_info.digits), "magic": MAGIC_NUMBER, "comment": "V11.6_UNLEASH", "type_filling": f_mode})
-                            if res and res.retcode == mt5.TRADE_RETCODE_DONE: print(f"\n[SUCCESS] Trade Placed. Unlimited mode active.")
+                        if adx_ok and is_mom_spike and cooldown_remaining == 0:
+                            signal = 1 if tick.ask > row['hh'] else (-1 if tick.bid < row['ll'] else 0)
+                            if signal != 0:
+                                is_btc = "BTC" in symbol.upper()
+                                sl_pts = 50.0 if is_btc else 1.0; tp_pts = (sl_pts * 3.0) 
+                                price = tick.ask if signal == 1 else tick.bid
+                                sl_price = price - sl_pts if signal == 1 else price + sl_pts
+                                tp_price = price + tp_pts if signal == 1 else price - tp_pts
+                                f_mode = mt5.ORDER_FILLING_FOK if s_info.filling_mode & 1 else (mt5.ORDER_FILLING_IOC if s_info.filling_mode & 2 else mt5.ORDER_FILLING_RETURN)
+                                res = mt5.order_send({"action": mt5.TRADE_ACTION_DEAL, "symbol": symbol, "volume": state.get("lots", 0.10), "type": mt5.ORDER_TYPE_BUY if signal == 1 else mt5.ORDER_TYPE_SELL, "price": price, "sl": round(sl_price, s_info.digits), "tp": round(tp_price, s_info.digits), "magic": MAGIC_NUMBER, "comment": "V11.7_HYBRID", "type_filling": f_mode})
+                                if res and res.retcode == mt5.TRADE_RETCODE_DONE: 
+                                    print(f"\n[SUCCESS] Trade Placed. Bar locked.")
+                                    last_entry_time = cur_min
+                                    last_trade_finish_time = time.time()
             time.sleep(0.1)
         except Exception as outer_err: print(f"\nOuter Error: {outer_err}"); time.sleep(1)
 
