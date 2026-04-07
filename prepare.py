@@ -10,8 +10,8 @@ from datetime import datetime, timedelta
 # Constants (fixed, do not modify)
 # ---------------------------------------------------------------------------
 
-SYMBOL = "BTCUSD"
-TIMEFRAME = mt5.TIMEFRAME_M1 # 1-minute for scalping
+SYMBOL = "XAUUSD+"
+TIMEFRAME = mt5.TIMEFRAME_M1
 TIME_BUDGET = 300        
 TRAIN_BARS = 30000       
 VAL_BARS = 10000          

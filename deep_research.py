@@ -3,17 +3,17 @@ import numpy as np
 import math
 
 def run_deep_research():
-    df = pd.read_parquet('btc_30d.parquet')
-    print(f"Analyzing {len(df)} bars of BTCUSD M1 data...")
+    import os
+    DATA_FILE = os.path.join(os.path.expanduser("~"), ".cache", "autoresearch_trading", "XAUUSD+_m1_scalping_data.parquet")
+    if not os.path.exists(DATA_FILE):
+        print(f"Data file not found at {DATA_FILE}")
+        return
+    df = pd.read_parquet(DATA_FILE)
+    print(f"Analyzing {len(df)} bars of XAUUSD+ (Gold) M1 data...")
     
-    # -----------------------------------------------------------------------
-    # Logic 1: Trend Breakout (High/Low of last 15 min + ADX)
-    # -----------------------------------------------------------------------
-    
+    # Pre-calculate Indicators
     df['hh'] = df['high'].rolling(15).max().shift(1)
     df['ll'] = df['low'].rolling(15).min().shift(1)
-    
-    # Simple ADX (to filter chop)
     df['up'] = df['high'].diff().clip(lower=0)
     df['down'] = (-df['low'].diff()).clip(lower=0)
     df['atr'] = (df['high'] - df['low']).rolling(14).mean()
@@ -34,24 +34,13 @@ def run_deep_research():
         
         for i in range(50, len(df)):
             row = df.iloc[i]
-            
             if not in_pos:
-                # Logic 1: Breakout
                 if logic_type == 'Breakout':
                     if row['close'] > row['hh'] and row['adx'] > 25:
-                        in_pos, pos_type, entry_price = True, 1, row['open'] + 2.0
+                        in_pos, pos_type, entry_price = True, 1, row['open'] + 0.10
                         sl, tp = entry_price - risk, entry_price + (risk * rr)
                     elif row['close'] < row['ll'] and row['adx'] > 25:
-                        in_pos, pos_type, entry_price = True, -1, row['open'] - 2.0
-                        sl, tp = entry_price + risk, entry_price - (risk * rr)
-                # Logic 2: Mean Reversion (Z-Score)
-                elif logic_type == 'MeanRev':
-                    z = (row['close'] - df['close'].iloc[i-100:i].mean()) / df['close'].iloc[i-100:i].std()
-                    if z < -2.0:
-                        in_pos, pos_type, entry_price = True, 1, row['open'] + 2.0
-                        sl, tp = entry_price - risk, entry_price + (risk * rr)
-                    elif z > 2.0:
-                        in_pos, pos_type, entry_price = True, -1, row['open'] - 2.0
+                        in_pos, pos_type, entry_price = True, -1, row['open'] - 0.10
                         sl, tp = entry_price + risk, entry_price - (risk * rr)
             else:
                 if trail > 0:
@@ -69,26 +58,25 @@ def run_deep_research():
                     elif row['low'] <= tp: trades.append(entry_price - tp); in_pos = False
         
         if not trades: return 0, 0, 0
-        pnl = sum(trades) * 0.06
+        pnl = sum(trades) * 50 # Standard gold lot (0.50 lot = $50 per full dollar move)
         win_rate = len([t for t in trades if t > 0]) / len(trades)
         return pnl, win_rate, len(trades)
 
     # Search
     best_pnl = -9999
     best_info = ""
-    
-    for logic in ['Breakout', 'MeanRev']:
-        for rsk in [50.0, 100.0, 150.0]:
-            for r in [1.5, 2.0]:
-                for trl in [20.0, 50.0]:
+    for logic in ['Breakout']:
+        for rsk in [1.0, 2.0, 3.0, 5.0]:
+            for r in [1.5, 2.0, 3.0]:
+                for trl in [0.20, 0.50, 1.0]:
                     pnl, wr, n = test_logic(df, logic, {'risk': rsk, 'rr': r, 'trail': trl})
                     if pnl > best_pnl:
                         best_pnl = pnl
-                        best_info = f"LOGIC: {logic} | PARAMS: risk={rsk}, rr={r}, trail={trl} | PnL: ${pnl:.2f} | WR: {wr:.2%} | Trades: {n}"
-                        print(f"New Best found: {best_info}")
+                        best_info = f"GOLD BEST found: risk=${rsk:.2f}, rr={r}, trail=${trl:.2f} | PnL: ${pnl:.2f} | WR: {wr:.2%} | Trades: {n}"
+                        print(best_info)
     
     print("---")
-    print("FINAL BEST SCALPING RESEARCH RESULT:")
+    print("FINAL GOLD RESEARCH RESULT:")
     print(best_info)
 
 if __name__ == '__main__':

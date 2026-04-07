@@ -208,11 +208,25 @@ HTML_TEMPLATE = """
 def get_state():
     if not os.path.exists(STATE_FILE):
         initial = {"active": False, "connected": False, "connect_intent": False, "symbol": "BTCUSD", "lots": 0.50, "sl_points": 15, "history": [], "total_pnl": 0.0, "account": {}}
-        with open(STATE_FILE, 'w') as f: json.dump(initial, f)
+        save_state(initial)
         return initial
+    
+    for _ in range(5):
+        try:
+            with open(STATE_FILE, 'r') as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            time.sleep(0.05)
+    return {"active": False, "connected": False, "connect_intent": False, "symbol": "BTCUSD", "lots": 0.50, "sl_points": 15, "history": [], "total_pnl": 0.0, "account": {}}
+
+def save_state(state):
+    temp_file = STATE_FILE + ".tmp"
     try:
-        with open(STATE_FILE, 'r') as f: return json.load(f)
-    except: return {"active": False, "connected": False, "connect_intent": False, "symbol": "BTCUSD", "lots": 0.50, "sl_points": 15, "history": [], "total_pnl": 0.0, "account": {}}
+        with open(temp_file, 'w') as f:
+            json.dump(state, f)
+        os.replace(temp_file, STATE_FILE)
+    except Exception as e:
+        app.logger.error(f"Error saving state: {e}")
 
 @app.route('/')
 def index(): return render_template_string(HTML_TEMPLATE)
@@ -227,21 +241,21 @@ def api_settings():
     for key in ["terminal_path", "lots", "symbol"]:
         if key in data: state[key] = data[key]
     if "connect_intent" in data: state["connect_intent"] = True
-    with open(STATE_FILE, 'w') as f: json.dump(state, f)
+    save_state(state)
     return jsonify(state)
 
 @app.route('/api/disconnect', methods=['POST'])
 def api_disconnect():
     state = get_state()
     state["connected"] = False; state["connect_intent"] = False; state["active"] = False; state["account"] = {}
-    with open(STATE_FILE, 'w') as f: json.dump(state, f)
+    save_state(state)
     return jsonify(state)
 
 @app.route('/api/toggle', methods=['POST'])
 def api_toggle():
     state = get_state()
     state["active"] = not state["active"]
-    with open(STATE_FILE, 'w') as f: json.dump(state, f)
+    save_state(state)
     return jsonify(state)
 
 if __name__ == "__main__":
