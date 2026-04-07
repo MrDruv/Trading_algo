@@ -18,9 +18,7 @@ An elite, autonomous high-frequency scalping system for Bitcoin (BTCUSD) and Gol
 | **Primary Logic** | 15-min Breakout | 15-min Breakout |
 | **Momentum Filter**| 1.5x Avg Range | 1.5x Avg Range |
 | **Trend Filter** | ADX > 25 | ADX > 25 |
-| **Initial SL** | $50.00 | $1.00 |
-| **Initial TP** | $150.00 (1:3 RR) | $3.00 (1:3 RR) |
-| **Trailing Dist** | $20.00 (Constant) | $0.20 (Constant) |
+| **Risk/Reward** | 1:3 | 1:3 |
 
 ## 🛠 Setup & Installation
 
