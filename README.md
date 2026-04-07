@@ -1,17 +1,26 @@
-# Quantum Scalper | Institutional BTCUSD Command Center (V4.2.1)
+# Diamond Engine | Institutional Scalping Command Center (V11.5)
 
-An elite, autonomous high-frequency scalping system for Bitcoin (BTCUSD) powered by the MetaTrader 5 Python API and a professional Flask-based web dashboard.
+An elite, autonomous high-frequency scalping system for Bitcoin (BTCUSD) and Gold (XAUUSD) powered by the MetaTrader 5 Python API and a professional Flask-based web dashboard.
 
-## 🚀 Key Features
+## 🚀 Key Features (V11.5 - Pure Momentum)
 
-- **V4.2.1 "Superb" Logic**: Combines ultra-fast EMA 5/13 crossovers with institutional Fair Value Gap (FVG) detection and 15-minute structural breakouts.
-- **Professional Command Center**: A high-end web dashboard ([http://localhost:5000](http://localhost:5000)) for real-time control and monitoring.
-- **Dynamic Risk Management**: 
-  - **Tight SL**: $15.00 initial protection.
-  - **Hyper-Aggressive Trailing**: Starts at $10.00 profit with a precise $5.00 trailing distance.
-  - **Unlimited Upside**: No fixed targets; rides trends indefinitely until the trail triggers.
-- **Live Account Sync**: Real-time tracking of Balance, Equity, and Broker details (Optimized for Vantage/Exness/FundedNext).
-- **Session Analysis**: Automated Win Rate calculation and consolidated trade history (one row per position).
+- **1.5x Momentum Spike Filter**: Only enters trades during high candle movement. Requires the breakout candle to be 50% larger than the 10-minute average.
+- **ADX Trend Confirmation**: Uses the Average Directional Index (ADX > 25) to ensure entries only occur during strong, confirmed trends.
+- **15-Minute Structural Breakouts**: Precision entry points based on the high/low of the last 15 bars.
+- **Strict 1:3 Risk-to-Reward**: Research-optimized targets designed to capitalize on aggressive momentum bursts.
+- **Constant Trailing Stop**: Instant profit protection that follows the price from the moment of entry.
+- **Professional Command Center**: A Flask-based web dashboard ([http://localhost:5000](http://localhost:5000)) for real-time control, account sync, and performance monitoring.
+
+## 📉 Trading Strategy: Momentum Spike Breakout
+
+| Component | Bitcoin (BTCUSD) | Gold (XAUUSD) |
+|-----------|-----------------|---------------|
+| **Primary Logic** | 15-min Breakout | 15-min Breakout |
+| **Momentum Filter**| 1.5x Avg Range | 1.5x Avg Range |
+| **Trend Filter** | ADX > 25 | ADX > 25 |
+| **Initial SL** | $50.00 | $1.00 |
+| **Initial TP** | $150.00 (1:3 RR) | $3.00 (1:3 RR) |
+| **Trailing Dist** | $20.00 (Constant) | $0.20 (Constant) |
 
 ## 🛠 Setup & Installation
 
@@ -19,42 +28,32 @@ An elite, autonomous high-frequency scalping system for Bitcoin (BTCUSD) powered
 - Windows OS
 - [MetaTrader 5 Terminal](https://www.metatrader5.com/en/download)
 - Python 3.10+
-- [uv](https://github.com/astral.sh/uv) (Recommended package manager)
 
 ### Quick Start
 1. **Clone and Install**:
    ```bash
    git clone https://github.com/MrDruv/Trading_algo.git
    cd Trading_algo
-   uv sync
+   python -m venv .venv
+   .\.venv\Scripts\activate
+   pip install -r requirements.txt
    ```
 2. **Launch Dashboard**:
    ```bash
-   uv run dashboard.py
+   python dashboard.py
    ```
 3. **Launch Engine**:
    ```bash
-   uv run live_execution.py
+   python live_execution.py
    ```
-4. **Connect**: Open [http://localhost:5000](http://localhost:5000), enter your `terminal64.exe` path, click **Initialize Link**, and then **Activate System**.
-
-## 📉 Trading Strategy: Institutional Fast-Momentum
-
-| Component | Logic |
-|-----------|-------|
-| **Trend Filter** | Fast EMA (5) vs Slow EMA (13) |
-| **Triggers** | 15-min High/Low Breakout OR Fair Value Gap (FVG) |
-| **Initial SL** | $15.00 (Fixed) |
-| **Trailing Stop**| Starts @ +$10.00 \| Distance: $5.00 |
-| **Take Profit** | None (Ride the momentum) |
-| **Lot Size** | Configurable via Dashboard (Default: 0.50) |
+4. **Connect**: Open [http://localhost:5000](http://localhost:5000), initialize your terminal path, and activate the system.
 
 ## 📂 Project Structure
 
-- `live_execution.py`: Multi-account sync engine and position manager.
-- `dashboard.py`: Professional Flask-based web interface.
-- `train.py`: Core strategy logic (`superb_momentum_logic`).
-- `bot_state.json`: Real-time state persistence between engine and UI.
+- `live_execution.py`: Core V11.5 execution engine with Momentum & ADX filters.
+- `dashboard.py`: Flask web interface for real-time monitoring.
+- `bot_state.json`: Atomic state persistence between engine and UI.
+- `train.py`: Historical logic container.
 
 ## ⚠️ Disclaimer
 
