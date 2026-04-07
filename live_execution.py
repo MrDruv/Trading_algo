@@ -8,7 +8,7 @@ import pandas as pd
 from train import superb_momentum_logic
 
 # ---------------------------------------------------------------------------
-# V11.5 - PURE MOMENTUM ENGINE (1.5x Multiplier | 0s Rest)
+# V11.6 - UNLEASHED MOMENTUM (Multi-Entry Per Bar | One-at-a-Time Only)
 # ---------------------------------------------------------------------------
 
 MAGIC_NUMBER = 111999
@@ -19,31 +19,25 @@ def get_state():
     for _ in range(5):
         try:
             if os.path.exists(STATE_FILE):
-                with open(STATE_FILE, 'r') as f:
-                    return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            time.sleep(0.05)
+                with open(STATE_FILE, 'r') as f: return json.load(f)
+        except (json.JSONDecodeError, IOError): time.sleep(0.05)
     return {"active": False, "connected": False, "symbol": "BTCUSD", "terminal_path": DEFAULT_TERMINAL_PATH, "lots": 0.50, "history": [], "total_pnl": 0.0, "account": {}}
 
 def save_state(state):
     temp_file = STATE_FILE + ".tmp"
     try:
-        with open(temp_file, 'w') as f:
-            json.dump(state, f)
+        with open(temp_file, 'w') as f: json.dump(state, f)
         os.replace(temp_file, STATE_FILE)
-    except Exception as e:
-        print(f"Error saving state: {e}")
+    except Exception as e: print(f"Error saving state: {e}")
 
 _last_sync_time = 0
 def sync_account_info(symbol):
     global _last_sync_time
-    if time.time() - _last_sync_time < 2:
-        return
+    if time.time() - _last_sync_time < 2: return
     state = get_state()
     acc = mt5.account_info()
     if acc:
-        new_acc_info = { "id": acc.login, "broker": acc.company, "balance": acc.balance, "leverage": acc.leverage, "margin_free": acc.margin_free }
-        state["account"] = new_acc_info
+        state["account"] = { "id": acc.login, "broker": acc.company, "balance": acc.balance, "leverage": acc.leverage, "margin_free": acc.margin_free }
         from_date = datetime.now() - timedelta(days=2); to_date = datetime.now() + timedelta(days=1)
         history = mt5.history_deals_get(from_date, to_date)
         if history:
@@ -62,31 +56,22 @@ def sync_account_info(symbol):
         _last_sync_time = time.time()
 
 def calculate_indicators(df):
-    # Range Calculations for Momentum Filter
     df['candle_range'] = df['high'] - df['low']
     df['avg_range'] = df['candle_range'].rolling(10).mean().shift(1)
-    
-    # ADX Calculation (14-period)
-    df['up'] = df['high'].diff().clip(lower=0)
-    df['down'] = (-df['low'].diff()).clip(lower=0)
+    df['up'] = df['high'].diff().clip(lower=0); df['down'] = (-df['low'].diff()).clip(lower=0)
     df['tr'] = np.maximum(df['high'] - df['low'], np.maximum(abs(df['high'] - df['close'].shift(1)), abs(df['low'] - df['close'].shift(1))))
     df['atr_calc'] = df['tr'].rolling(14).mean()
     df['di_up'] = 100 * (df['up'].rolling(14).mean() / df['atr_calc'])
     df['di_down'] = 100 * (df['down'].rolling(14).mean() / df['atr_calc'])
     df['dx'] = 100 * ((df['di_up'] - df['di_down']).abs() / (df['di_up'] + df['di_down']))
     df['adx'] = df['dx'].rolling(14).mean()
-    
-    # 15-min Breakout Levels
-    df['hh'] = df['high'].rolling(15).max().shift(1)
-    df['ll'] = df['low'].rolling(15).min().shift(1)
+    df['hh'] = df['high'].rolling(15).max().shift(1); df['ll'] = df['low'].rolling(15).min().shift(1)
     return df
 
 def run_bot():
-    print("Diamond Engine V11.5 - Pure Momentum Spike Logic (1.5x Multiplier).")
+    print("Diamond Engine V11.6 - Unleashed Momentum (Multi-Entry Active).")
     mt5.initialize(path=DEFAULT_TERMINAL_PATH)
     
-    last_entry_time = None
-
     while True:
         try:
             state = get_state()
@@ -94,9 +79,7 @@ def run_bot():
             if not (t_info and t_info.connected):
                 mt5.initialize(path=DEFAULT_TERMINAL_PATH); time.sleep(2); continue
 
-            symbol = state["symbol"]
-            if symbol == "XAUUSD": symbol = "XAUUSD+"
-            
+            symbol = state["symbol"]; if symbol == "XAUUSD": symbol = "XAUUSD+"
             sync_account_info(symbol)
             s_info = mt5.symbol_info(symbol)
             if not s_info: time.sleep(2); continue
@@ -104,20 +87,15 @@ def run_bot():
             all_pos = mt5.positions_get()
             current_pos_count = len([p for p in all_pos if symbol[:6].upper() in p.symbol.upper()]) if all_pos else 0
 
-            # --- 1. OPTIMIZED TRAILING ENGINE ---
+            # --- 1. TRAILING ENGINE ---
             if all_pos:
                 for pos in all_pos:
                     if symbol[:6].upper() not in pos.symbol.upper(): continue
-                    
                     p_cur, p_sl, p_tp = pos.price_current, pos.sl, pos.tp
                     is_buy = (pos.type == mt5.POSITION_TYPE_BUY)
-                    is_btc = "BTC" in pos.symbol.upper()
-                    
-                    trail_dist = 20.0 if is_btc else 0.20
+                    trail_dist = 20.0 if "BTC" in pos.symbol.upper() else 0.20
                     new_sl = p_cur - trail_dist if is_buy else p_cur + trail_dist
-                    
                     should_update = (new_sl > p_sl + 0.01) if is_buy else (p_sl == 0 or new_sl < p_sl - 0.01)
-                    
                     if should_update:
                         digits = mt5.symbol_info(pos.symbol).digits
                         min_gap = max(s_info.trade_stops_level * s_info.point, s_info.point * 10)
@@ -125,51 +103,34 @@ def run_bot():
                             mt5.order_send({"action": mt5.TRADE_ACTION_SLTP, "position": pos.ticket, "symbol": pos.symbol, "sl": round(new_sl, digits), "tp": p_tp, "magic": pos.magic})
 
             if not state["active"]: 
-                print(f"\r[{datetime.now().strftime('%H:%M:%S')}] {symbol} | STANDBY", end="", flush=True)
-                time.sleep(1); continue
+                print(f"\r[{datetime.now().strftime('%H:%M:%S')}] {symbol} | STANDBY", end="", flush=True); time.sleep(1); continue
 
-            # --- 2. OPTIMIZED SIGNAL SCAN ---
+            # --- 2. SIGNAL SCAN (NO BAR LIMIT) ---
             rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M1, 0, 50)
             if rates is not None:
                 df = calculate_indicators(pd.DataFrame(rates))
-                cur_min = pd.to_datetime(df['time'].iloc[-1], unit='s')
-                row = df.iloc[-1]
-                tick = mt5.symbol_info_tick(symbol)
+                row = df.iloc[-1]; tick = mt5.symbol_info_tick(symbol)
                 
                 if current_pos_count == 0:
-                    if last_entry_time is None or cur_min > last_entry_time:
-                        
-                        is_mom_spike = row['candle_range'] > (row['avg_range'] * 1.5)
-                        adx_ok = row['adx'] > 25
-                        
-                        status = "READY"
-                        if not adx_ok: status = "WAIT (ADX)"
-                        elif not is_mom_spike: status = "WAIT (MOM)"
-                        
-                        intent = "BUY" if tick.ask > row['hh'] else ("SELL" if tick.bid < row['ll'] else "WAITING")
-                        print(f"\r[{datetime.now().strftime('%H:%M:%S')}] {symbol}: ${tick.bid:.2f} | {status} | {intent}", end="", flush=True)
+                    is_mom_spike = row['candle_range'] > (row['avg_range'] * 1.5)
+                    adx_ok = row['adx'] > 25
+                    status = "READY" if (adx_ok and is_mom_spike) else ("WAIT (MOM)" if adx_ok else "WAIT (ADX)")
+                    intent = "BUY" if tick.ask > row['hh'] else ("SELL" if tick.bid < row['ll'] else "WAITING")
+                    print(f"\r[{datetime.now().strftime('%H:%M:%S')}] {symbol}: ${tick.bid:.2f} | {status} | {intent}", end="", flush=True)
 
-                        if adx_ok and is_mom_spike:
-                            signal = 1 if tick.ask > row['hh'] else (-1 if tick.bid < row['ll'] else 0)
-                            
-                            if signal != 0:
-                                is_btc = "BTC" in symbol.upper()
-                                sl_pts = 50.0 if is_btc else 1.0
-                                tp_pts = (sl_pts * 3.0) 
-                                
-                                price = tick.ask if signal == 1 else tick.bid
-                                sl_price = price - sl_pts if signal == 1 else price + sl_pts
-                                tp_price = price + tp_pts if signal == 1 else price - tp_pts
-                                
-                                f_mode = mt5.ORDER_FILLING_FOK if s_info.filling_mode & 1 else (mt5.ORDER_FILLING_IOC if s_info.filling_mode & 2 else mt5.ORDER_FILLING_RETURN)
-                                res = mt5.order_send({"action": mt5.TRADE_ACTION_DEAL, "symbol": symbol, "volume": state.get("lots", 0.10), "type": mt5.ORDER_TYPE_BUY if signal == 1 else mt5.ORDER_TYPE_SELL, "price": price, "sl": round(sl_price, s_info.digits), "tp": round(tp_price, s_info.digits), "magic": MAGIC_NUMBER, "comment": "V11.5_PURE", "type_filling": f_mode})
-                                if res and res.retcode == mt5.TRADE_RETCODE_DONE:
-                                    print(f"\n[SUCCESS] Trade Placed. Momentum confirmed.")
-                                    last_entry_time = cur_min
+                    if adx_ok and is_mom_spike:
+                        signal = 1 if tick.ask > row['hh'] else (-1 if tick.bid < row['ll'] else 0)
+                        if signal != 0:
+                            is_btc = "BTC" in symbol.upper()
+                            sl_pts = 50.0 if is_btc else 1.0; tp_pts = (sl_pts * 3.0) 
+                            price = tick.ask if signal == 1 else tick.bid
+                            sl_price = price - sl_pts if signal == 1 else price + sl_pts
+                            tp_price = price + tp_pts if signal == 1 else price - tp_pts
+                            f_mode = mt5.ORDER_FILLING_FOK if s_info.filling_mode & 1 else (mt5.ORDER_FILLING_IOC if s_info.filling_mode & 2 else mt5.ORDER_FILLING_RETURN)
+                            res = mt5.order_send({"action": mt5.TRADE_ACTION_DEAL, "symbol": symbol, "volume": state.get("lots", 0.10), "type": mt5.ORDER_TYPE_BUY if signal == 1 else mt5.ORDER_TYPE_SELL, "price": price, "sl": round(sl_price, s_info.digits), "tp": round(tp_price, s_info.digits), "magic": MAGIC_NUMBER, "comment": "V11.6_UNLEASH", "type_filling": f_mode})
+                            if res and res.retcode == mt5.TRADE_RETCODE_DONE: print(f"\n[SUCCESS] Trade Placed. Unlimited mode active.")
             time.sleep(0.1)
-        except Exception as outer_err: 
-            print(f"\nOuter Error: {outer_err}")
-            time.sleep(1)
+        except Exception as outer_err: print(f"\nOuter Error: {outer_err}"); time.sleep(1)
 
 if __name__ == "__main__":
     run_bot()

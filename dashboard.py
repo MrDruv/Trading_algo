@@ -1,12 +1,37 @@
-from flask import Flask, jsonify, request, render_template_string
+from flask import Flask, jsonify, request, render_template_string, session, redirect, url_for
 from flask_cors import CORS
 import json
 import os
+import secrets
 
 app = Flask(__name__)
 CORS(app)
+app.secret_key = secrets.token_hex(16)
 
 STATE_FILE = "bot_state.json"
+LOGIN_PASSWORD = "Ghin@577"
+
+LOGIN_HTML = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><title>Login</title>
+    <style>
+        body { background: #0a0b10; color: white; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #14161f; padding: 30px; border-radius: 12px; border: 1px solid #232635; text-align: center; width: 300px; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border-radius: 8px; border: 1px solid #232635; background: #000; color: white; box-sizing: border-box; text-align: center; }
+        button { width: 100%; padding: 12px; border-radius: 8px; border: none; background: #0070f3; color: white; cursor: pointer; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>Quantum Scalper</h2>
+        <form method="POST"><input type="password" name="password" placeholder="Password" required><button type="submit">Login</button></form>
+        {% if error %}<p style="color:red">{{ error }}</p>{% endif %}
+    </div>
+</body>
+</html>
+"""
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -52,7 +77,8 @@ HTML_TEMPLATE = """
     <div class="container">
         <div class="nav">
             <div class="logo">QUANTUM<span>SCALPER</span></div>
-            <div style="display:flex; gap:10px">
+            <div style="display:flex; gap:10px; align-items:center">
+                <a href="/logout" style="color:var(--text-dim); font-size:12px; text-decoration:none">Logout</a>
                 <button style="background:var(--card-bg); color:var(--text); border:1px solid var(--border); padding:8px 15px; border-radius:8px; cursor:pointer" onclick="toggleTheme()" id="theme-btn">🌙 Dark</button>
                 <div class="status-pill">
                     <div id="conn-dot" class="dot dot-inactive"></div>
@@ -83,7 +109,6 @@ HTML_TEMPLATE = """
                     <div><label>Asset</label><select id="target-symbol"><option value="BTCUSD">BTCUSD</option><option value="XAUUSD">XAUUSD</option></select></div>
                     <div><label>Lots</label><input type="number" id="lot-size" step="0.01"></div>
                 </div>
-                <!-- SL and Trail Surgically Removed -->
                 <div id="algo-status" style="font-weight:700; margin:10px 0">STANDBY</div>
                 <button id="toggle-btn" class="btn btn-success">START BOT</button>
             </div>
@@ -123,12 +148,13 @@ HTML_TEMPLATE = """
 
         async function refresh() {
             const r = await fetch('/api/state');
+            if (r.status === 401) { window.location.href = '/login'; return; }
             const s = await r.json();
             
             if (!window.uiInit) {
                 document.getElementById('mt5-path').value = s.terminal_path || "";
-                document.getElementById('lot-size').value = s.lots || 0.50;
-                document.getElementById('target-symbol').value = s.symbol || "BTCUSD";
+                document.getElementById('lot-size').value = s.lots || 0.10;
+                document.getElementById('target-symbol').value = s.symbol || "XAUUSD";
                 window.uiInit = true;
             }
 
@@ -160,7 +186,6 @@ HTML_TEMPLATE = """
             const currentSymbol = document.getElementById('target-symbol').value;
             document.querySelectorAll('.active-asset-name').forEach(el => el.innerText = currentSymbol);
             
-            // FIXED: Matching logic for history (match the base symbol)
             const assetTrades = s.history.filter(t => t.symbol.includes(currentSymbol.substring(0, 3)));
             const assetClosed = assetTrades.filter(t => t.profit !== 0);
             const assetPnl = assetTrades.reduce((acc, t) => acc + t.profit, 0);
@@ -210,32 +235,47 @@ def get_state():
         initial = {"active": False, "connected": False, "connect_intent": False, "symbol": "BTCUSD", "lots": 0.50, "sl_points": 15, "history": [], "total_pnl": 0.0, "account": {}}
         save_state(initial)
         return initial
-    
     for _ in range(5):
         try:
-            with open(STATE_FILE, 'r') as f:
-                return json.load(f)
-        except (json.JSONDecodeError, IOError):
-            time.sleep(0.05)
+            with open(STATE_FILE, 'r') as f: return json.load(f)
+        except: time.sleep(0.05)
     return {"active": False, "connected": False, "connect_intent": False, "symbol": "BTCUSD", "lots": 0.50, "sl_points": 15, "history": [], "total_pnl": 0.0, "account": {}}
 
 def save_state(state):
     temp_file = STATE_FILE + ".tmp"
     try:
-        with open(temp_file, 'w') as f:
-            json.dump(state, f)
+        with open(temp_file, 'w') as f: json.dump(state, f)
         os.replace(temp_file, STATE_FILE)
-    except Exception as e:
-        app.logger.error(f"Error saving state: {e}")
+    except Exception as e: app.logger.error(f"Error saving state: {e}")
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        if request.form['password'] == LOGIN_PASSWORD:
+            session['logged_in'] = True
+            return redirect(url_for('index'))
+        else: error = 'Invalid Password'
+    return render_template_string(LOGIN_HTML, error=error)
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('login'))
 
 @app.route('/')
-def index(): return render_template_string(HTML_TEMPLATE)
+def index():
+    if 'logged_in' not in session: return redirect(url_for('login'))
+    return render_template_string(HTML_TEMPLATE)
 
 @app.route('/api/state')
-def api_state(): return jsonify(get_state())
+def api_state():
+    if 'logged_in' not in session: return jsonify({"error": "Unauthorized"}), 401
+    return jsonify(get_state())
 
 @app.route('/api/settings', methods=['POST'])
 def api_settings():
+    if 'logged_in' not in session: return jsonify({"error": "Unauthorized"}), 401
     data = request.json
     state = get_state()
     for key in ["terminal_path", "lots", "symbol"]:
@@ -246,6 +286,7 @@ def api_settings():
 
 @app.route('/api/disconnect', methods=['POST'])
 def api_disconnect():
+    if 'logged_in' not in session: return jsonify({"error": "Unauthorized"}), 401
     state = get_state()
     state["connected"] = False; state["connect_intent"] = False; state["active"] = False; state["account"] = {}
     save_state(state)
@@ -253,6 +294,7 @@ def api_disconnect():
 
 @app.route('/api/toggle', methods=['POST'])
 def api_toggle():
+    if 'logged_in' not in session: return jsonify({"error": "Unauthorized"}), 401
     state = get_state()
     state["active"] = not state["active"]
     save_state(state)
