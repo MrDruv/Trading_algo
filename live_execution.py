@@ -8,7 +8,7 @@ import pandas as pd
 from train import superb_momentum_logic
 
 # ---------------------------------------------------------------------------
-# V11.3 - PRECISION PRO (Fixed Cooldown + Strict 1:3 RR)
+# V11.5 - PURE MOMENTUM ENGINE (1.5x Multiplier | 0s Rest)
 # ---------------------------------------------------------------------------
 
 MAGIC_NUMBER = 111999
@@ -62,6 +62,10 @@ def sync_account_info(symbol):
         _last_sync_time = time.time()
 
 def calculate_indicators(df):
+    # Range Calculations for Momentum Filter
+    df['candle_range'] = df['high'] - df['low']
+    df['avg_range'] = df['candle_range'].rolling(10).mean().shift(1)
+    
     # ADX Calculation (14-period)
     df['up'] = df['high'].diff().clip(lower=0)
     df['down'] = (-df['low'].diff()).clip(lower=0)
@@ -78,12 +82,10 @@ def calculate_indicators(df):
     return df
 
 def run_bot():
-    print("Diamond Engine V11.3 - Precision Pro (Fixed Cooldown + 1:3 RR).")
+    print("Diamond Engine V11.5 - Pure Momentum Spike Logic (1.5x Multiplier).")
     mt5.initialize(path=DEFAULT_TERMINAL_PATH)
     
     last_entry_time = None
-    last_trade_finish_time = 0
-    had_position = False
 
     while True:
         try:
@@ -107,7 +109,7 @@ def run_bot():
                 for pos in all_pos:
                     if symbol[:6].upper() not in pos.symbol.upper(): continue
                     
-                    p_cur, p_open, p_sl, p_tp = pos.price_current, pos.price_open, pos.sl, pos.tp
+                    p_cur, p_sl, p_tp = pos.price_current, pos.sl, pos.tp
                     is_buy = (pos.type == mt5.POSITION_TYPE_BUY)
                     is_btc = "BTC" in pos.symbol.upper()
                     
@@ -122,18 +124,11 @@ def run_bot():
                         if abs(p_cur - new_sl) >= min_gap:
                             mt5.order_send({"action": mt5.TRADE_ACTION_SLTP, "position": pos.ticket, "symbol": pos.symbol, "sl": round(new_sl, digits), "tp": p_tp, "magic": pos.magic})
 
-            # --- COOLDOWN TRACKER ---
-            if current_pos_count > 0:
-                had_position = True
-            elif had_position and current_pos_count == 0:
-                last_trade_finish_time = time.time()
-                had_position = False
-
             if not state["active"]: 
                 print(f"\r[{datetime.now().strftime('%H:%M:%S')}] {symbol} | STANDBY", end="", flush=True)
                 time.sleep(1); continue
 
-            # --- 2. OPTIMIZED SIGNAL SCAN (With Fixed Cooldown) ---
+            # --- 2. OPTIMIZED SIGNAL SCAN ---
             rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M1, 0, 50)
             if rates is not None:
                 df = calculate_indicators(pd.DataFrame(rates))
@@ -141,41 +136,36 @@ def run_bot():
                 row = df.iloc[-1]
                 tick = mt5.symbol_info_tick(symbol)
                 
-                cooldown_remaining = max(0, 60 - (time.time() - last_trade_finish_time))
-                
                 if current_pos_count == 0:
                     if last_entry_time is None or cur_min > last_entry_time:
                         
-                        adx_val = row['adx']
-                        adx_ok = adx_val > 25
+                        is_mom_spike = row['candle_range'] > (row['avg_range'] * 1.5)
+                        adx_ok = row['adx'] > 25
                         
                         status = "READY"
                         if not adx_ok: status = "WAIT (ADX)"
-                        if cooldown_remaining > 0: status = f"REST ({int(cooldown_remaining)}s)"
+                        elif not is_mom_spike: status = "WAIT (MOM)"
                         
                         intent = "BUY" if tick.ask > row['hh'] else ("SELL" if tick.bid < row['ll'] else "WAITING")
                         print(f"\r[{datetime.now().strftime('%H:%M:%S')}] {symbol}: ${tick.bid:.2f} | {status} | {intent}", end="", flush=True)
 
-                        if not adx_ok or cooldown_remaining > 0:
-                            time.sleep(0.1); continue
-
-                        signal = 1 if tick.ask > row['hh'] else (-1 if tick.bid < row['ll'] else 0)
-                        
-                        if signal != 0:
-                            is_btc = "BTC" in symbol.upper()
-                            sl_pts = 50.0 if is_btc else 1.0
-                            tp_pts = (sl_pts * 3.0) # STRICT 1:3 RR FOR BOTH
+                        if adx_ok and is_mom_spike:
+                            signal = 1 if tick.ask > row['hh'] else (-1 if tick.bid < row['ll'] else 0)
                             
-                            price = tick.ask if signal == 1 else tick.bid
-                            sl_price = price - sl_pts if signal == 1 else price + sl_pts
-                            tp_price = price + tp_pts if signal == 1 else price - tp_pts
-                            
-                            f_mode = mt5.ORDER_FILLING_FOK if s_info.filling_mode & 1 else (mt5.ORDER_FILLING_IOC if s_info.filling_mode & 2 else mt5.ORDER_FILLING_RETURN)
-                            res = mt5.order_send({"action": mt5.TRADE_ACTION_DEAL, "symbol": symbol, "volume": state.get("lots", 0.50), "type": mt5.ORDER_TYPE_BUY if signal == 1 else mt5.ORDER_TYPE_SELL, "price": price, "sl": round(sl_price, s_info.digits), "tp": round(tp_price, s_info.digits), "magic": MAGIC_NUMBER, "comment": "V11.3_STRICT", "type_filling": f_mode})
-                            if res and res.retcode == mt5.TRADE_RETCODE_DONE:
-                                print(f"\n[SUCCESS] Trade Placed. Next available candle locked.")
-                                last_entry_time = cur_min
-                                had_position = True
+                            if signal != 0:
+                                is_btc = "BTC" in symbol.upper()
+                                sl_pts = 50.0 if is_btc else 1.0
+                                tp_pts = (sl_pts * 3.0) 
+                                
+                                price = tick.ask if signal == 1 else tick.bid
+                                sl_price = price - sl_pts if signal == 1 else price + sl_pts
+                                tp_price = price + tp_pts if signal == 1 else price - tp_pts
+                                
+                                f_mode = mt5.ORDER_FILLING_FOK if s_info.filling_mode & 1 else (mt5.ORDER_FILLING_IOC if s_info.filling_mode & 2 else mt5.ORDER_FILLING_RETURN)
+                                res = mt5.order_send({"action": mt5.TRADE_ACTION_DEAL, "symbol": symbol, "volume": state.get("lots", 0.10), "type": mt5.ORDER_TYPE_BUY if signal == 1 else mt5.ORDER_TYPE_SELL, "price": price, "sl": round(sl_price, s_info.digits), "tp": round(tp_price, s_info.digits), "magic": MAGIC_NUMBER, "comment": "V11.5_PURE", "type_filling": f_mode})
+                                if res and res.retcode == mt5.TRADE_RETCODE_DONE:
+                                    print(f"\n[SUCCESS] Trade Placed. Momentum confirmed.")
+                                    last_entry_time = cur_min
             time.sleep(0.1)
         except Exception as outer_err: 
             print(f"\nOuter Error: {outer_err}")
