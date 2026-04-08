@@ -196,15 +196,23 @@ HTML_TEMPLATE = """
             document.getElementById('asset-win-rate').innerText = assetWinRate;
             document.getElementById('asset-total-trades').innerText = assetClosed.length;
 
-            document.getElementById('asset-history-body').innerHTML = assetTrades.slice().reverse().map(t => `
-                <tr>
-                    <td style="color:var(--text-dim)">${t.time}</td>
-                    <td style="font-weight:700; color:${t.type=='BUY'?'var(--accent)':'#f44336'}">${t.type}</td>
-                    <td>${t.price.toFixed(2)}</td>
-                    <td style="color:${t.profit>=0?'var(--success)':'var(--danger)'}; font-weight:700">${t.profit>=0?'+':''}${t.profit.toFixed(2)}</td>
-                </tr>
-            `).join('');
-
+            document.getElementById('asset-history-body').innerHTML = assetTrades.slice().reverse().map(t => {
+                // Broker is 3 hours AHEAD of IST
+                const [h, m, s] = t.time.split(':').map(Number);
+                let date = new Date();
+                date.setHours(h - 3, m, s); // Subtract 3 hours
+                const istTime = date.getHours().toString().padStart(2, '0') + ":" + 
+                                date.getMinutes().toString().padStart(2, '0') + ":" + 
+                                date.getSeconds().toString().padStart(2, '0');
+                return `
+                    <tr>
+                        <td style="color:var(--text-dim)">${istTime}</td>
+                        <td style="font-weight:700; color:${t.type=='BUY'?'var(--accent)':'#f44336'}">${t.type}</td>
+                        <td>${t.price.toFixed(2)}</td>
+                        <td style="color:${t.profit>=0?'var(--success)':'var(--danger)'}; font-weight:700">${t.profit>=0?'+':''}${t.profit.toFixed(2)}</td>
+                    </tr>
+                `;
+            }).join('');
             document.getElementById('target-symbol').disabled = s.active;
             document.getElementById('lot-size').disabled = s.active;
         }
