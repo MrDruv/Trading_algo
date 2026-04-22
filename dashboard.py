@@ -3,6 +3,9 @@ from flask_cors import CORS
 import json
 import os
 import secrets
+import MetaTrader5 as mt5
+from datetime import datetime, timedelta
+import time
 
 app = Flask(__name__)
 CORS(app)
@@ -186,9 +189,9 @@ HTML_TEMPLATE = """
             const currentSymbol = document.getElementById('target-symbol').value;
             document.querySelectorAll('.active-asset-name').forEach(el => el.innerText = currentSymbol);
             
-            const assetTrades = s.history.filter(t => t.symbol.includes(currentSymbol.substring(0, 3)));
+            const assetTrades = (s.history || []).filter(t => t.symbol && t.symbol.includes(currentSymbol.substring(0, 3)));
             const assetClosed = assetTrades.filter(t => t.profit !== 0);
-            const assetPnl = assetTrades.reduce((acc, t) => acc + t.profit, 0);
+            const assetPnl = assetTrades.reduce((acc, t) => acc + (t.profit || 0), 0);
             const assetWinRate = assetClosed.length > 0 ? ((assetClosed.filter(t => t.profit > 0).length / assetClosed.length) * 100).toFixed(1) + "%" : "0.0%";
 
             document.getElementById('asset-pnl-text').innerText = (assetPnl >= 0 ? "+" : "") + "$" + assetPnl.toFixed(2);
@@ -238,23 +241,98 @@ HTML_TEMPLATE = """
 </html>
 """
 
+_last_sync_time = 0
+
+def sync_mt5_history(state):
+    global _last_sync_time
+    # Bypass throttle if connect_intent is active
+    if time.time() - _last_sync_time < 10 and not state.get("connect_intent"):
+        return state
+
+    path = state.get("terminal_path")
+    if not path:
+        return state
+
+    # Only attempt if connected or if user intended to connect
+    if not state.get("connected") and not state.get("connect_intent"):
+        return state
+
+    if not mt5.initialize(path=path):
+        state["connected"] = False
+        # If initialization fails, we might want to clear the intent so it doesn't loop forever
+        # but let's keep it for now so the user can see it's trying.
+        return state
+
+    try:
+        state["connected"] = True
+        state["connect_intent"] = False # Successfully connected, clear intent
+        
+        from_date = datetime.now() - timedelta(days=3)
+        history = mt5.history_deals_get(from_date, datetime.now() + timedelta(days=1))
+        # ... rest of history sync ...
+
+        if history:
+            pos_map = {}
+            for deal in history:
+                if any(s in deal.symbol.upper() for s in ["XAU", "GOLD"]):
+                    pid = deal.position_id
+                    if pid not in pos_map:
+                        pos_map[pid] = {"time": "", "symbol": deal.symbol, "type": "", "price": 0.0, "profit": 0.0}
+
+                    if deal.entry == mt5.DEAL_ENTRY_IN:
+                        pos_map[pid].update({
+                            "time": datetime.fromtimestamp(deal.time).strftime('%H:%M:%S'),
+                            "type": "BUY" if deal.type == mt5.DEAL_TYPE_BUY else "SELL",
+                            "price": deal.price
+                        })
+                    pos_map[pid]["profit"] += deal.profit
+
+            state["history"] = [v for v in pos_map.values() if v["time"]]
+            state["total_pnl"] = sum(t["profit"] for t in state["history"])
+
+            acc = mt5.account_info()
+            if acc:
+                state["account"] = {"id": acc.login, "broker": acc.company, "balance": acc.balance}
+        _last_sync_time = time.time()
+    finally:
+        mt5.shutdown()
+
+    return state
+
 def get_state():
     if not os.path.exists(STATE_FILE):
-        initial = {"active": False, "connected": False, "connect_intent": False, "symbol": "BTCUSD", "lots": 0.50, "sl_points": 15, "history": [], "total_pnl": 0.0, "account": {}}
+        initial = {"active": False, "connected": False, "connect_intent": False, "symbol": "XAUUSD", "lots": 0.10, "history": [], "total_pnl": 0.0, "account": {}}
         save_state(initial)
         return initial
+
     for _ in range(5):
         try:
-            with open(STATE_FILE, 'r') as f: return json.load(f)
-        except: time.sleep(0.05)
-    return {"active": False, "connected": False, "connect_intent": False, "symbol": "BTCUSD", "lots": 0.50, "sl_points": 15, "history": [], "total_pnl": 0.0, "account": {}}
+            with open(STATE_FILE, 'r') as f:
+                state = json.load(f)
+                new_state = sync_mt5_history(state.copy())
+                if new_state != state:
+                    save_state(new_state)
+                    return new_state
+                return state
+        except:
+            time.sleep(0.1)
+    return {"active": False, "connected": False, "symbol": "XAUUSD", "lots": 0.10, "history": [], "total_pnl": 0.0, "account": {}}
 
 def save_state(state):
-    temp_file = STATE_FILE + ".tmp"
-    try:
-        with open(temp_file, 'w') as f: json.dump(state, f)
-        os.replace(temp_file, STATE_FILE)
-    except Exception as e: app.logger.error(f"Error saving state: {e}")
+    temp_file = f"bot_state_{secrets.token_hex(4)}.tmp"
+    for i in range(10):
+        try:
+            with open(temp_file, 'w') as f: json.dump(state, f)
+            if os.path.exists(STATE_FILE):
+                os.remove(STATE_FILE)
+            os.rename(temp_file, STATE_FILE)
+            return
+        except Exception as e:
+            if i == 9: app.logger.error(f"Error saving state after 10 retries: {e}")
+            time.sleep(0.1)
+    if os.path.exists(temp_file):
+        try: os.remove(temp_file)
+        except: pass
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
